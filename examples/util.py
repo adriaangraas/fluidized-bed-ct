@@ -94,18 +94,18 @@ def plot_sino(sino):
     plt.show()
 
 
-def plot_3d(y):
+def plot_3d(y, vmin=0, vmax=1):
     import matplotlib.pyplot as plt
 
     n, n, m = y.shape
 
     _, (ax1, ax2, ax3) = plt.subplots(1, 3, num=2)
     ax1.set_title("$\hat{e}_3$ plane")
-    ax1.imshow(y[:, :, int(m / 2)].T)
+    ax1.imshow(y[:, :, int(m / 2)].T, vmin=vmin, vmax=vmax)
     ax2.set_title("$\hat{e}_2$ plane")
-    ax2.imshow(y[:, int(n / 2), :].T)
+    ax2.imshow(y[:, int(n / 2), :].T, vmin=vmin, vmax=vmax)
     ax3.set_title("$\hat{e}_1$ plane")
-    ax3.imshow(y[int(n / 2), :, :].T)
+    ax3.imshow(y[int(n / 2), :, :].T, vmin=vmin, vmax=vmax)
     plt.show()
 
     # from mayavi import mlab

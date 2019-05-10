@@ -45,4 +45,4 @@ for t in range(recon_start_timeframe, recon_end_timeframe):
     # postprocess and plot
     from skimage.restoration import denoise_tv_chambolle
     y = denoise_tv_chambolle(x.data, weight=0.036)
-    plot_3d(y)
+    plot_3d(y, vmax=0.1)
