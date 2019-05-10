@@ -1,6 +1,6 @@
 # Fluidized bed CT 
 Two examples:
-- reconstruction on a plane in the volume using a [fanbeam approximation](examples/fanbeam_2d.ipynb)
+- reconstruction on a plane in the volume using a [fanbeam approximation](examples/fanbeam_approx.ipynb)
 - partial 3D reconstruction using [conebeam](examples/conebeam_3d.ipynb)
 
 ![](bubble.png)
