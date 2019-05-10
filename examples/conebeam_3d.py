@@ -2,11 +2,11 @@ import odl
 import matplotlib.pyplot as plt
 import numpy as np
 
-from bubblereactor import *
+from fbrct import *
 from examples.util import *
 
 fname = '/export/scratch1/adriaan/MatlabProjects/DynamicTomography/astra_scripts' \
-    f'/fluidized_bed_1_python_2.mat'
+    '/fluidized_bed_1_python_2.mat'
 p, pref, (T, nr_detectors, det_height, det_count) = load_dataset(fname)
 
 recon_height_range = range(774 - 350, 774 + 350)

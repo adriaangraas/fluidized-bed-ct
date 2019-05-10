@@ -10,7 +10,7 @@ with open('README.md') as readme_file:
 # with open('CHANGELOG.md') as history_file:
 #     history = history_file.read()
 
-with open(os.path.join('fluidized_bed_ct', 'VERSION')) as version_file:
+with open(os.path.join('fbrct', 'VERSION')) as version_file:
     version = version_file.read().strip()
 
 requirements = [
@@ -39,7 +39,7 @@ setup(
     # long_description=readme + '\n\n' + history,
     include_package_data=True,
     keywords='',
-    name='fluidized_bed_ct',
+    name='fbrct',
     # packages=find_packages(include=[]),
     setup_requires=setup_requirements,
     # test_suite='tests',

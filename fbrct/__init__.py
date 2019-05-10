@@ -14,4 +14,4 @@ def __get_version():
 
 __version__ = __get_version()
 
-from .bubblereactor import *
+from .fbrct import *

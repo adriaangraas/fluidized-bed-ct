@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import h5py
 import dyntomo
-from bubblereactor import reconstruct_filter, plot_sino
+from fbrct import reconstruct_filter, plot_sino
 from skimage import measure
 from mpl_toolkits.mplot3d import Axes3D
 

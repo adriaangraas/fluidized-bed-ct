@@ -1,12 +1,12 @@
 import odl
 import matplotlib.pyplot as plt
 import numpy as np
-from bubblereactor import *
+from fbrct import *
 from examples.settings import *
 from examples.util import load_dataset, uniform_angle_partition, detector_partition_2d
 
 fname = '/export/scratch1/adriaan/MatlabProjects/DynamicTomography/astra_scripts' \
-    f'/fluidized_bed_1_python_2.mat'
+    '/fluidized_bed_1_python_2.mat'
 p, pref, (T, nr_detectors, det_height, det_count) = load_dataset(fname)
 
 apart, dpart = uniform_angle_partition(), detector_partition_2d()
