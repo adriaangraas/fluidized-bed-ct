@@ -9,4 +9,4 @@ Two examples:
 You need to install ODL, ASTRA Toolbox as well as scipy and numpy.
 
 ### License
-This project is licensed under the GNU General Public License v3 - see the [LICENSE.md](LICENSE.md) file for details.
+This project is licensed under the GNU General Public License v3 - see the [LICENSE](LICENSE) file for details.
