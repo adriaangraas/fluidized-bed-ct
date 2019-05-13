@@ -45,7 +45,7 @@ setup(
     # test_suite='tests',
     tests_require=test_requirements,
     extras_require={ 'dev': dev_requirements },
-    url='https://github.com/adriaangraas/fluidized_bed_ct',
+    url='https://github.com/adriaangraas/fluidized-bed-ct',
     version=version,
     zip_safe=False,
 )
