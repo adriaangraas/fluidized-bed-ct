@@ -77,24 +77,28 @@ def plot_sino_range(p, start, end):
     plt.show()
 
 
-def plot_sino(sino):
+def plot_sino(sino, pause=None):
     import matplotlib.pyplot as plt
 
     if sino.shape[0] == 2:
         _, (ax1, ax2) = plt.subplots(1, 2, num='1')
-        ax1.imshow(sino[0, ...])
-        ax2.imshow(sino[1, ...])
-
-    if sino.shape[0] == 3:
+        ax1.imshow(sino[0, ...].T)
+        ax2.imshow(sino[1, ...].T)
+    elif sino.shape[0] == 3:
         _, (ax1, ax2, ax3) = plt.subplots(1, 3, num='1')
-        ax1.imshow(sino[0, ...])
-        ax2.imshow(sino[1, ...])
-        ax3.imshow(sino[2, ...])
+        ax1.imshow(sino[0, ...].T)
+        ax2.imshow(sino[1, ...].T)
+        ax3.imshow(sino[2, ...].T)
+    else:
+        ValueError("Unexpected shape of sinogram. Received:", sino.shape)
 
-    plt.show()
+    if pause is None:
+        plt.show()
+    else:
+        plt.pause(pause)
 
 
-def plot_3d(y, vmin=0, vmax=1):
+def plot_3d(y, vmin=0., vmax=None, pause=None):
     import matplotlib.pyplot as plt
 
     n, n, m = y.shape
@@ -106,7 +110,10 @@ def plot_3d(y, vmin=0, vmax=1):
     ax2.imshow(y[:, int(n / 2), :].T, vmin=vmin, vmax=vmax)
     ax3.set_title("$\hat{e}_1$ plane")
     ax3.imshow(y[int(n / 2), :, :].T, vmin=vmin, vmax=vmax)
-    plt.show()
+    if pause is None:
+        plt.show()
+    else:
+        plt.pause(pause)
 
     # from mayavi import mlab
     # from skimage.measure import marching_cubes_lewiner

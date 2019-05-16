@@ -1,14 +1,8 @@
 from fbrct import *
+from fbrct.phantom import *
 from fbrct.util import *
 
-fname = '/export/scratch1/adriaan/MatlabProjects/DynamicTomography/astra_scripts' \
-    '/fluidized_bed_1_python_2.mat'
-p, pref, (T, nr_detectors, det_height, det_count) = load_dataset(fname)
-
-recon_height_range = range(774 - 350, 774 + 350)
-recon_height_length = int(len(recon_height_range))
-recon_start_timeframe = 22
-recon_end_timeframe = T
+recon_height_length = 700
 n = 50  # reconstruction on a n*n*m grid
 L = 10  # -L cm to L cm in the physical space
 # scale amount of pixels and physical height according to the selected reconstruction range
@@ -24,21 +18,20 @@ reco_space_3d = odl.uniform_discr(
     shape=[n, n, m])
 xray_transform = odl.tomo.RayTransform(reco_space_3d, geometry)
 
-for t in range(recon_start_timeframe, recon_end_timeframe):
-    # sinogram selection and scaling
-    pr = -(p[t, :, recon_height_range, :] - pref[:, recon_height_range, :])
-    sinogram = np.swapaxes(pr, 1, 2)  # plot_sino(sinogram)
+p = generate_3d_phantom_data(PHANTOM_3D_SIMPLE_ROTATED_ELLIPSOID, L, H, n, m, geometry)
+timerange = range(p.shape[0])
 
-    # reconstruct
+for t in timerange:
+    sinogram = p[t, ...]
+    plot_sino(sinogram, pause=0.1)
+
     x = xray_transform.domain.element(np.zeros(xray_transform.domain.shape))
     reconstruct_filter(
         xray_transform,
         sinogram,
         x,
-        niter=50,
+        niter=150,
+        mask=column_mask([n, n, m]),
         clip=[0, None])
 
-    # postprocess and plot
-    from skimage.restoration import denoise_tv_chambolle
-    y = denoise_tv_chambolle(x.data, weight=0.036)
-    plot_3d(y, vmax=0.1)
+    plot_3d(x.data, pause=.1)

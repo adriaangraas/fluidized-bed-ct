@@ -40,6 +40,26 @@ def circle_mask_2d(shape, radius=None, center=None):
     return v
 
 
+def column_mask(shape, radius=None, center=None):
+    """
+    :param shape: tuple
+    :param radius: leave to None to compute automatically
+    :param center: leave to None to compute automatically
+    :return:
+    """
+
+    assert len(shape) == 3
+
+    s1, s2, s3 = shape
+
+    col = np.empty(shape)
+
+    for z in range(s3):
+        col[:, :, z] = circle_mask_2d((s1, s2))
+
+    return col
+
+
 def reconstruct_filter(op: odl.Operator, p, u, niter=10, mask=None,
                        fn_filter=None, clip=(None, None)):
     """
@@ -65,11 +85,7 @@ def reconstruct_filter(op: odl.Operator, p, u, niter=10, mask=None,
     R = odl.MultiplyOperator(np.divide(1, op(ones)))
 
     if mask is not None:
-        if u.ndim == 2:
-            M = odl.MultiplyOperator(op.domain.element(mask), domain=op.domain, range=op.domain)
-        else:
-            # build a column mask
-            raise NotImplementedError
+        M = odl.MultiplyOperator(op.domain.element(mask), domain=op.domain, range=op.domain)
     else:
         M = odl.IdentityOperator(op.domain)
 
@@ -100,7 +116,7 @@ def reconstruct_filter(op: odl.Operator, p, u, niter=10, mask=None,
 
         # correction step (median filter)
         if fn_filter is not None:
-            u[:] = fn_filter(u)
+            u.data[:] = fn_filter(u.data)
 
         # for example:
         #     u[:] = beta * medians_3d(u) + (1 - beta) * u
@@ -137,4 +153,3 @@ def medians_3d(u):
                 w[i, j, k] = np.median(patch.flat)
 
     return w
-

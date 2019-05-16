@@ -1,0 +1,63 @@
+# syntax for object decription -- Object : object type (see names above), C0, x0, y0, z0, a, b, c, angle1, angle2, angle3;
+#****************************************************
+#---------TEMPORAL (4D) Phantoms [no . >=100]--------
+#****************************************************
+# Temporal (3D +time) model, 1 volumetric Gaussian + 1 paraboloid
+Model : 100;
+Components : 02;
+TimeSteps : 5;
+Object : paraboloid 1.00 0.0 0.0 0.0 0.2 0.4 0.6 30.0 0.0 0.0;
+Endvar : 1.0 0.2 0.2 0.0 0.15 0.2 0.7 60.0 0.0 0.0;
+Object : gaussian 1.00 -0.45 -0.45 -0.4 0.3 0.3 0.3 0.0 0.0 0.0;
+Endvar : 1.0 0.0 -0.3 0.3 0.4 0.15 0.5 30.0 10.0 -40.0;
+#----------------------------------------------------
+# Temporal (3D + time) model
+Model : 101;
+Components : 11;
+TimeSteps : 10;
+Object : cuboid 1.00 0.0 0.0 -0.6 0.2 0.2 0.2 0.0;
+Endvar : 1.00 0.0 0.0 0.6 0.2 0.2 0.2 0.0;
+Object : cuboid 1.00 0.0 0.1 -0.6 0.1 0.1 0.1 0.0;
+Endvar : 1.00 0.0 0.1 -0.6 0.1 0.1 0.1 0.0;
+Object : cuboid 1.00 0.0 -0.1 -0.6 0.1 0.1 0.1 0.0;
+Endvar : 1.00 0.0 -0.1 -0.6 0.1 0.1 0.1 0.0;
+Object : cuboid 1.00 0.0 0.1 0.0 0.1 0.1 0.1 0.0;
+Endvar : 1.00 0.0 0.1 0.0 0.1 0.1 0.1 0.0;
+Object : cuboid 1.00 0.0 -0.1 0.0 0.1 0.1 0.1 0.0;
+Endvar : 1.00 0.0 -0.1 0.0 0.1 0.1 0.1 0.0;
+Object : cuboid 1.00 0.0 0.1 0.6 0.1 0.1 0.1 0.0;
+Endvar : 1.00 0.0 0.1 0.6 0.1 0.1 0.1 0.0;
+Object : cuboid 1.00 0.0 -0.1 0.6 0.1 0.1 0.1 0.0;
+Endvar : 1.00 0.0 -0.1 0.6 0.1 0.1 0.1 0.0;
+Object : ellipsoid 1.00 -0.5 -0.5 -0.6 0.2 0.1 0.2 30.0;
+Endvar : 1.00 -0.5 -0.5 0.6 0.2 0.1 0.2 -30.0;
+Object : ellipsoid 1.00 0.5 -0.5 -0.6 0.1 0.2 0.2 0.0;
+Endvar : 1.00 0.5 -0.5 0.6 0.1 0.2 0.2 0.0;
+Object : paraboloid 1.00 -0.5 0.5 -0.6 0.1 0.25 0.2 0.0;
+Endvar : 1.00 -0.5 0.5 0.6 0.1 0.2 0.25 0.0;
+Object : gaussian 1.00 0.5 0.5 -0.6 0.1 0.25 0.2 45.0;
+Endvar : 1.00 0.5 0.5 0.6 0.1 0.2 0.25 0.0;
+#----------------------------------------------------
+# Temporal (3D +time) model, 1 volumetric Gaussian  + 1 paraboloid getting squeezed
+Model : 102;
+Components : 02;
+TimeSteps : 10;
+Object : paraboloid 1.00 0.0 0.0 -0.35 0.4 0.4 0.4 0.0;
+Endvar : 1.00 0.0 0.0 -0.35 0.4 0.4 0.05 0.0;
+Object : gaussian 1.00 0.0 0.0 0.35 0.4 0.4 0.4 0.0;
+Endvar : 1.00 0.0 0.0 0.35 0.4 0.4 0.05 0.0;
+#----------------------------------------------------
+# Fluidized Bed Reactor: linear upward sphere
+Model : 1000;
+Components : 01;
+TimeSteps : 40;
+Object : ellipsoid 1.00 -0.2 0.15 -0.0 0.5 0.3 0.5 90.0;
+Endvar : 1.00 -0.2 -0.65 0.0 0.5 0.3 0.5 90.0;
+#----------------------------------------------------
+# Fluidized Bed Reactor: linear upward rotated sphere
+Model : 1001;
+Components : 01;
+TimeSteps : 20;
+Object : ellipsoid 1.00 0.0 0.0 -0.0 0.2 0.1 0.2 30.0;
+Endvar : 1.00 0.0 -1.0 0.0 0.2 0.1 0.2 30.0;
+#----------------------------------------------------

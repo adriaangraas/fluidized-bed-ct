@@ -1,18 +1,12 @@
-import matplotlib.pyplot as plt
 from fbrct import *
-from examples.settings import *
+from fbrct.phantom import *
 from fbrct.util import *
-
-fname = '/export/scratch1/adriaan/MatlabProjects/DynamicTomography/astra_scripts' \
-    '/fluidized_bed_1_python_2.mat'
-p, pref, (T, nr_detectors, det_height, det_count) = load_dataset(fname)
+import matplotlib.pyplot as plt
 
 apart, dpart = uniform_angle_partition(), detector_partition_2d()
 geometry = odl.tomo.FanFlatGeometry(apart, dpart, SOURCE_RADIUS, DETECTOR_RADIUS)
 
-recon_height = 773  # height of the slice to reconstruct, in pixels
-recon_start_timeframe = 13  # starting frame
-recon_end_timeframe = T
+recon_height = int(DETECTOR_ROWS/2)+1
 
 n = 100  # amount of voxels in one dimension (i.e. nxn object)
 L = 10  # centimeters  -L cm to L cm in the physical space
@@ -25,9 +19,16 @@ reco_space = odl.uniform_discr(
     shape=[n, n])
 xray_transform = odl.tomo.RayTransform(reco_space, geometry)
 
-for t in range(recon_start_timeframe, recon_end_timeframe):
+# we need a 3D geometry to simulate projection (detector) data
+dpart_3d = detector_partition_3d(DETECTOR_ROWS)
+phantom_geometry = odl.tomo.ConeFlatGeometry(apart, dpart_3d, SOURCE_RADIUS, DETECTOR_RADIUS)
+p = generate_3d_phantom_data(PHANTOM_3D_SIMPLE_ELLIPSOID, L, L, n, n, phantom_geometry)
+
+for t in range(p.shape[0]):
+    h = recon_height
     # take and scale the projection data
-    sinogram = -(p[t, :, recon_height, :] - pref[:, recon_height, :])
+    sinogram = p[t, :, h, :]
+    plot_sino(p[t, ...], pause=0.1)
 
     # reconstruct iteratively
     # starting vector is 0 in iteration
@@ -38,12 +39,16 @@ for t in range(recon_start_timeframe, recon_end_timeframe):
         xray_transform,
         sinogram,
         x,
-        niter=100,
+        niter=10,
         clip=(0, None),  # clipping values
         # fn_filter=lambda u: .1 * medians_2d(u) + .9 * u,  # median filter
-        mask=circle_mask_2d(x.shape))
+        mask=circle_mask_2d(x.shape)
+    )
 
     # plot results
-    plt.figure(2)
-    plt.imshow(x)
-    plt.pause(.1)
+    plt.figure(2 * h)
+    plt.clf()
+    plt.imshow(x, vmax=1.5)
+    plt.colorbar()
+    plt.pause(1)
+

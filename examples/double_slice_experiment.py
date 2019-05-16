@@ -1,9 +1,7 @@
-import odl
 import matplotlib.pyplot as plt
-import numpy as np
 from fbrct import *
 from examples.settings import *
-from examples.util import load_dataset, uniform_angle_partition, detector_partition_2d
+from fbrct.util import load_dataset, uniform_angle_partition, detector_partition_2d
 
 fname = '/export/scratch1/adriaan/MatlabProjects/DynamicTomography/astra_scripts' \
     '/fluidized_bed_1_python_2.mat'
