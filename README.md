@@ -13,7 +13,7 @@ And, to get to understand the qualities of tomographic reconstruction, some expe
 ### Note on runtime performance 
 This code runs mostly on the CPU, and some important iterations are done in 
 Python: it is not written with performance in mind. It can be made perhaps a factor 100 or so 
-more performant, some of which are quite simple. Just to keep in mind.
+more performant with a few adjustments, some of which are quite simple.
 
 ### Installation instructions
 You need to install ODL, ASTRA Toolbox as well as scipy and numpy.
