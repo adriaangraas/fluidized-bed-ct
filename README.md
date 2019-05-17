@@ -7,7 +7,7 @@ And, to get to understand the qualities of tomographic reconstruction, some expe
 **numerical phantoms**:
 - study of the artifacts produced by using a fanbeam approximation in a [2D slice](examples/phantom_2d.ipynb);
 - study of the SART reconstruction method and median filter working on a [3D ellipsoid](examples/phantom_3d.ipynb) that travels through the column.
-- study of reconstructions when [two bubbles](examples/double_bubble.ipynb) go through a slice 
+- study of reconstructions when [two bubbles](examples/double_bubble_2d.ipynb) go through a slice 
 and overlap on a detector.
 
 ![](bubble.png) 
