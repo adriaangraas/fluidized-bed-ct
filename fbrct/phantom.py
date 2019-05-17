@@ -5,6 +5,8 @@ import odl
 
 PHANTOM_3D_SIMPLE_ELLIPSOID = 1000
 PHANTOM_3D_SIMPLE_ROTATED_ELLIPSOID = 1001
+PHANTOM_3D_DOUBLE_BUBBLE = 1002
+PHANTOM_3D_DOUBLE_BUBBLE_NONALIGNED = 1003
 
 
 def generate_3d_phantom_data(model_number, L, H, n, m, geometry, from_volume_accuracy=256):

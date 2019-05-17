@@ -16,18 +16,21 @@ def load_dataset(fname):
     return p, pref, p.shape
 
 
-def uniform_angle_partition(dim=2):
+def uniform_angle_partition(dim=2, offset=0.0):
     """
     Return basically an array of three angles ODL-style :)
     :return:
     """
+    if not (-2 * np.pi <= offset <= 2 * np.pi):
+        raise ValueError()
+
     if dim == 2:
         apart = odl.uniform_partition(
-            min_pt=0, max_pt=2 * np.pi - (2 * np.pi / 3),
+            min_pt=0+offset, max_pt=2 * np.pi - (2 * np.pi / 3) + offset,
             shape=3,
             nodes_on_bdry=True)
     else:
-        raise ValueError
+        raise ValueError()
 
     return apart
 

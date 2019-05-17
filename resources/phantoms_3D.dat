@@ -47,7 +47,7 @@ Endvar : 1.00 0.0 0.0 -0.35 0.4 0.4 0.05 0.0;
 Object : gaussian 1.00 0.0 0.0 0.35 0.4 0.4 0.4 0.0;
 Endvar : 1.00 0.0 0.0 0.35 0.4 0.4 0.05 0.0;
 #----------------------------------------------------
-# Fluidized Bed Reactor: linear upward sphere
+# Fluidized Bed Reactor: linear upward sphere, offcenter
 Model : 1000;
 Components : 01;
 TimeSteps : 40;
@@ -61,3 +61,23 @@ TimeSteps : 20;
 Object : ellipsoid 1.00 0.0 0.0 -0.0 0.2 0.1 0.2 30.0;
 Endvar : 1.00 0.0 -1.0 0.0 0.2 0.1 0.2 30.0;
 #----------------------------------------------------
+# Hm it looks like ellipsoids, are defined like:
+# C0, y0, z0, x0, b, a, c, 0, 0, phi
+# I don't know what the 0s do
+# Fluidized Bed Reactor: two equivalent spheres
+Model : 1002;
+Components : 02;
+TimeSteps : 20;
+Object : ellipsoid 1.00 -0.5 -0.2 0.0 0.2 0.3 0.3 0.0;
+Endvar :           1.00 -0.5  0.2 0.0 0.2 0.3 0.3 0.0;
+Object : ellipsoid 1.00  0.5 -0.2 0.0 0.2 0.3 0.3 0.0;
+Endvar :           1.00  0.5  0.2 0.0 0.2 0.3 0.3 0.0;
+#----------------------------------------------------
+# Fluidized Bed Reactor: two equivalent spheres, different directions
+Model : 1003;
+Components : 02;
+TimeSteps : 20;
+Object : ellipsoid 1.00 -0.0 -0.2 -0.5 0.2 0.3 0.3 0.0;
+Endvar :           1.00 -0.0  0.2 -0.5 0.2 0.3 0.3 0.0;
+Object : ellipsoid 1.00  0.0 -0.2  0.5 0.2 0.3 0.3 0.0;
+Endvar :           1.00  0.0  0.2  0.5 0.2 0.3 0.3 0.0;
