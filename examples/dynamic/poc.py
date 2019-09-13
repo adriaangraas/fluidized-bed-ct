@@ -1,9 +1,11 @@
+from examples.dynamic.loader import Loader
 from fbrct import *
 from fbrct.util import *
 
-fname = '/export/scratch1/adriaan/MatlabProjects/DynamicTomography/astra_scripts' \
-    '/fluidized_bed_1_python_2.mat'
-p, pref, (T, nr_detectors, det_height, det_count) = load_dataset_matlab(fname)
+path = '/export/scratch2/adriaan/evert/2019-07-25 dataset 3D reconstructie CWI/'
+loader = Loader(path)
+loader.projs()
+p, pref, (T, nr_detectors, det_height, det_count) = load_dataset(fname)
 
 recon_height_range = range(774 - 350, 774 + 350)
 recon_height_length = int(len(recon_height_range))

@@ -5,7 +5,7 @@ import numpy as np
 from examples.settings import *
 
 
-def load_dataset(fname):
+def load_dataset_matlab(fname):
     f = h5py.File(fname, 'r')
     p, pref = f['p_aligned_T'], f['pref_aligned_T']
 
@@ -14,7 +14,6 @@ def load_dataset(fname):
     assert pref.shape[2] == 1524 and p.shape[3] == 1524
 
     return p, pref, p.shape
-
 
 def uniform_angle_partition(dim=2, offset=0.0):
     """

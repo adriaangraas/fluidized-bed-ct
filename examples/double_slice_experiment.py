@@ -1,11 +1,11 @@
 import matplotlib.pyplot as plt
 from fbrct import *
 from examples.settings import *
-from fbrct.util import load_dataset, uniform_angle_partition, detector_partition_2d
+from fbrct.util import load_dataset_matlab, uniform_angle_partition, detector_partition_2d
 
 fname = '/export/scratch1/adriaan/MatlabProjects/DynamicTomography/astra_scripts' \
     '/fluidized_bed_1_python_2.mat'
-p, pref, (T, nr_detectors, det_height, det_count) = load_dataset(fname)
+p, pref, (T, nr_detectors, det_height, det_count) = load_dataset_matlab(fname)
 
 apart, dpart = uniform_angle_partition(), detector_partition_2d()
 geometry = odl.tomo.FanFlatGeometry(apart, dpart, SOURCE_RADIUS, DETECTOR_RADIUS)
