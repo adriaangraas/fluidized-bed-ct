@@ -1,7 +1,6 @@
 import h5py
 import odl
 import numpy as np
-
 from examples.settings import *
 
 
@@ -49,18 +48,18 @@ def detector_partition_2d():
         DETECTOR_ROWS)
 
 
-def detector_partition_3d(recon_height_length):
+def detector_partition_3d(recon_height_length=None, recon_width_length=None):
     """
-    Return a limited-height detector partition that is meant to make
+    Return a limited-height, limited-width detector partition that is meant to make
     a partial reconstruction.
     """
     recon_det_size = np.array([
-        DETECTOR_WIDTH,
+        recon_width_length * DETECTOR_PIXEL_WIDTH,
         recon_height_length * DETECTOR_PIXEL_HEIGHT,
     ])
 
     recon_det_shape = [
-        DETECTOR_ROWS,
+        recon_width_length,
         recon_height_length,
     ]
 

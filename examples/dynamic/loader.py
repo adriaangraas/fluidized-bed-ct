@@ -76,7 +76,7 @@ class Loader:
         ims = np.empty((len(time_range), 3, *im_shape))
 
         for (camera_id, proj_id), filename in zip(results, results_filenames):
-            ims[proj_id, camera_id-1, ...] = tifffile.imread(filename)
+            ims[proj_id, camera_id - 1, ...] = tifffile.imread(filename)
 
         return ims
 
@@ -107,24 +107,23 @@ class Loader:
 
         return ims
 
-    def projs(self, dir = "pre_proc_1_65lmin_83mm_FOV2", t_range: range = None):
-        Idark = np.mean(self.darks(t_range), axis=0)
-        #@todo I should use m
+    def projs(self, dir, t_range: range = None):
+        Idark = np.mean(self.darks(), axis=0)
+        # @todo I should use m
 
-        Ibright = np.mean(self.brights(t_range), axis=0)
+        Ibright = np.mean(self.brights(), axis=0)
         Ifull = np.mean(self.fulls(t_range), axis=0)
 
         proj_path = os.path.join(self.path, dir)
         Imeas = self._load(self.PROJECTION_FILE_REGEX, proj_path, t_range)
 
-        # compute gas fraction
-        np.divide(Imeas, Ifull, out=Imeas)
-        np.log(Imeas, out=Imeas)
-
-        np.divide(Ibright, Ifull, out=Ibright)
-        np.log(Ibright, out=Ibright)
-
-        np.divide(Imeas, Ibright, out=Imeas)
+        # # compute gas fraction
+        # np.divide(Imeas, Ifull, out=Imeas)
+        # np.log(Imeas, out=Imeas)
+        # np.divide(Ibright, Ifull, out=Ibright)
+        # np.log(Ibright, out=Ibright)
+        #
+        # np.divide(Imeas, Ibright, out=Imeas)
 
         return Imeas
 
