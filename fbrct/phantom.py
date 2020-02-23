@@ -9,13 +9,13 @@ PHANTOM_3D_DOUBLE_BUBBLE = 1002
 PHANTOM_3D_DOUBLE_BUBBLE_NONALIGNED = 1003
 
 
-def generate_3d_phantom_data(model_number, L, H, n, m, geometry, from_volume_accuracy=256):
-    N_size = from_volume_accuracy
-    M_size = int(np.ceil(N_size / n * m))
+def generate_3d_phantom_data(model_number, L, H, n, m, geometry, from_volume_accuracy=256,
+                             path = '/ufs/adriaan/tmp/pycharm_project_639/resources/phantoms_3D.dat'):
+    N_size = from_volume_accuracy  # number of voxels in x, y axis
+    M_size = int(np.ceil(N_size / n * m))  # number of voxels in z axis
+    bigger_size = np.max(N_size, M_size)
 
-    assert M_size <= N_size
-
-    phantom_3Dt = TomoP3D.ModelTemporal(model_number, N_size, '../resources/phantoms_3D.dat')
+    phantom_3Dt = TomoP3D.ModelTemporal(model_number, bigger_size, path)
 
     timesteps = phantom_3Dt.shape[0]
 
@@ -28,7 +28,14 @@ def generate_3d_phantom_data(model_number, L, H, n, m, geometry, from_volume_acc
 
     p_lst = list()
     for t in range(timesteps):
-        x = xray_transform.domain.element(phantom_3Dt[t, ..., :M_size])
+        # make the phantom fit in the reconstruction space
+        if N_size > M_size:
+            x = xray_transform.domain.element(phantom_3Dt[t, ..., :M_size])
+        else:
+            left = M_size//2 - N_size//2
+            right = M_size//2 + N_size//2
+            x = xray_transform.domain.element(phantom_3Dt[t, left:right, left:right, :])
+
         p = xray_transform(x).data
         p_lst.append(p)
         # plot_3d(phantom_3Dt[t, ..., :M_size])

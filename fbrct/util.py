@@ -1,7 +1,6 @@
 import h5py
 import odl
 import numpy as np
-from examples.settings import *
 
 
 def load_dataset_matlab(fname):
@@ -33,7 +32,7 @@ def uniform_angle_partition(dim=2, offset=0.0):
     return apart
 
 
-def detector_partition_2d():
+def detector_partition_2d(recon_width_length, det_pixel_width):
     """
     Return a detector partition
 
@@ -42,20 +41,27 @@ def detector_partition_2d():
     :param recon_det_shape:
     :return:
     """
+    detector_size = recon_width_length * det_pixel_width
+    # if recon_width_length is not None:
+    #     detector_size = recon_width_length * det_pixel_width
+    # else:
+    #     detector_size = DETECTOR_SIZE[0]
+
     return odl.uniform_partition(
-        -DETECTOR_SIZE[0] / 2,
-        DETECTOR_SIZE[0] / 2,
-        DETECTOR_ROWS)
+        -detector_size / 2,
+        detector_size / 2,
+        recon_width_length)
 
 
-def detector_partition_3d(recon_height_length=None, recon_width_length=None):
+def detector_partition_3d(recon_width_length, recon_height_length,
+                          det_pixel_width, det_pixel_height):
     """
     Return a limited-height, limited-width detector partition that is meant to make
     a partial reconstruction.
     """
     recon_det_size = np.array([
-        recon_width_length * DETECTOR_PIXEL_WIDTH,
-        recon_height_length * DETECTOR_PIXEL_HEIGHT,
+        recon_width_length * det_pixel_width,
+        recon_height_length * det_pixel_height,
     ])
 
     recon_det_shape = [
@@ -78,18 +84,18 @@ def plot_sino_range(p, start, end):
     plt.show()
 
 
-def plot_sino(sino, pause=None):
+def plot_sino(sino, pause=None, vmin=None, vmax=None):
     import matplotlib.pyplot as plt
 
     if sino.shape[0] == 2:
         _, (ax1, ax2) = plt.subplots(1, 2, num='1')
-        ax1.imshow(sino[0, ...].T)
-        ax2.imshow(sino[1, ...].T)
+        ax1.imshow(sino[0, ...].T, vmin=vmin, vmax=vmax)
+        ax2.imshow(sino[1, ...].T, vmin=vmin, vmax=vmax)
     elif sino.shape[0] == 3:
         _, (ax1, ax2, ax3) = plt.subplots(1, 3, num='1')
-        ax1.imshow(sino[0, ...].T)
-        ax2.imshow(sino[1, ...].T)
-        ax3.imshow(sino[2, ...].T)
+        ax1.imshow(sino[0, ...].T, vmin=vmin, vmax=vmax)
+        ax2.imshow(sino[1, ...].T, vmin=vmin, vmax=vmax)
+        ax3.imshow(sino[2, ...].T, vmin=vmin, vmax=vmax)
     else:
         ValueError("Unexpected shape of sinogram. Received:", sino.shape)
 
@@ -106,11 +112,11 @@ def plot_3d(y, vmin=0., vmax=None, pause=None):
 
     _, (ax1, ax2, ax3) = plt.subplots(1, 3, num=2)
     ax1.set_title("$\hat{e}_3$ plane")
-    ax1.imshow(y[:, :, int(m / 2)].T, vmin=vmin, vmax=vmax)
+    ax1.imshow(y[..., m // 2].T, vmin=vmin, vmax=vmax)
     ax2.set_title("$\hat{e}_2$ plane")
-    ax2.imshow(y[:, int(n / 2), :].T, vmin=vmin, vmax=vmax)
+    ax2.imshow(y[:, n // 2, :].T, vmin=vmin, vmax=vmax)
     ax3.set_title("$\hat{e}_1$ plane")
-    ax3.imshow(y[int(n / 2), :, :].T, vmin=vmin, vmax=vmax)
+    ax3.imshow(y[n // 2, ...].T, vmin=vmin, vmax=vmax)
     if pause is None:
         plt.show()
     else:

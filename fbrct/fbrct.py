@@ -3,7 +3,7 @@ import numpy as np
 import odl
 
 
-def circle_mask_2d(shape, radius=None, center=None):
+def circle_mask_2d(shape, radius=None, center=None, value=1.):
     """
     :param shape: tuple
     :param radius: leave to None to compute automatically
@@ -60,8 +60,8 @@ def column_mask(shape, radius=None, center=None):
     return col
 
 
-def reconstruct_filter(op: odl.Operator, p, u, niter=10, mask=None,
-                       fn_filter=None, clip=(None, None)):
+def reconstruct_filter(op: odl.Operator, p, u, niter=10, mask=None, mask_val=0.,
+                       fn_filter=None, clip=(None, None), iter_start=0, iter_save=50, save_name="recon"):
     """
     Iterative reconstruction based on
        R.F. Mudde, Time-resolved X-ray tomography of a fluidized bed
@@ -78,30 +78,58 @@ def reconstruct_filter(op: odl.Operator, p, u, niter=10, mask=None,
      output
        u - final iterate
     """
-    ones = op.range.element(np.ones(op.range.shape))
-    C = odl.MultiplyOperator(np.divide(1, op.adjoint(ones)))
-
-    ones = op.domain.element(np.ones(op.domain.shape))
-    R = odl.MultiplyOperator(np.divide(1, op(ones)))
-
     if mask is not None:
         M = odl.MultiplyOperator(op.domain.element(mask), domain=op.domain, range=op.domain)
     else:
         M = odl.IdentityOperator(op.domain)
 
-    for _ in range(niter):
+    detector_ones = op.range.element(np.ones(op.range.shape))
+    backprojected_ones = op.adjoint(detector_ones)
+    # a matrix that divides every voxel by the times it is hit by a ray
+    # I don't know why but Numpy does not parse the where kwarg when an DiscreteLpElement is passed, bug?
+    np.divide(1, backprojected_ones.data, where=backprojected_ones.data != 0, out=backprojected_ones.data)
+    C = odl.MultiplyOperator(backprojected_ones)
+
+    # a volume full of 1s
+    volume_ones = op.domain.element(np.ones(op.domain.shape))
+    projected_ones = op(volume_ones)
+    # a matrix that divides every pixel by the times it is hit by a ray
+    # I don't know why but Numpy does not parse the `where` kwarg when an DiscreteLpElement is passed, bug?
+    np.divide(1, projected_ones.data, where=projected_ones.data != 0, out=projected_ones.data)
+    R = odl.MultiplyOperator(projected_ones)
+
+
+
+    for i in range(iter_start, niter + iter_start):
+        print("Iter:" + str(i))
+
         # SART update
         # v = u + C(M.adjoint(op.adjoint(R(p - op(M(u))))))
 
         # u += C*M.T*op.T*R*(p - op*M*u)
+
+        # Apply mask, if specified
         u2 = M(u)
 
+        # Project
         v = op(u2)
+
+        # Store the residual on the detector in v
         np.subtract(p, v, out=v.data)
+
+        # Divide detector by the number of times it is hit by a ray
         R(v, out=v)
+
+        # Backproject
         w = op.adjoint(v)
-        M.adjoint(w, out=w)  # adjoint of a diagonal...
+
+        # Divide volume voxels by the number of times they are hit by a ray
         C(w, out=w)
+
+        # Apply mask again, if specified
+        M(w, out=w)  # adjoint of a diagonal...
+
+        # Update the solution
         np.add(u, w, out=u.data)
 
         # import matplotlib.pyplot as plt
@@ -117,6 +145,11 @@ def reconstruct_filter(op: odl.Operator, p, u, niter=10, mask=None,
         # correction step (median filter)
         if fn_filter is not None:
             u.data[:] = fn_filter(u.data)
+
+        # save
+        if (i+1) % iter_save == 0:
+            print(f"Saving {save_name}...")
+            np.save(f"{save_name}_{i+1}", u.data)
 
         # for example:
         #     u[:] = beta * medians_3d(u) + (1 - beta) * u
