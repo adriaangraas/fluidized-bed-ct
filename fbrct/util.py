@@ -97,7 +97,7 @@ def plot_sino(sino, pause=None, vmin=None, vmax=None):
         ax2.imshow(sino[1, ...].T, vmin=vmin, vmax=vmax)
         ax3.imshow(sino[2, ...].T, vmin=vmin, vmax=vmax)
     else:
-        ValueError("Unexpected shape of sinogram. Received:", sino.shape)
+        raise ValueError("Unexpected shape of sinogram. Received:", sino.shape)
 
     if pause is None:
         plt.show()

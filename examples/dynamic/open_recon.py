@@ -1,7 +1,13 @@
+import itertools
+import os
+
 import numpy as np
-import vtk
-from PyQt5 import QtGui
 import pyqtgraph as pq
+from PyQt5 import QtGui
+
+from examples.dynamic.settings_2020 import SCANS
+from fbrct import plot_3d
+
 
 def plot_qtgraph(vol):
     app = QtGui.QApplication([])
@@ -32,6 +38,8 @@ def plot_volume(vol):
 
 
 def numpy2VTK(img, filename, spacing=[1.0, 1.0, 1.0]):
+    import vtk
+
     # evolved from code from Stou S.,
     # on http://www.siafoo.net/snippet/314
     # This function, as the name suggests, converts numpy array to VTK
@@ -64,15 +72,28 @@ def numpy2VTK(img, filename, spacing=[1.0, 1.0, 1.0]):
     writer.Write()
 
 
-fn_pref = 'recon_3d_pre_proc_3_30lmin_83mm_FOV2'
-# fn_pref = 'recon_pre_proc_6_60lmin_83mm_FOV2'
-# fn_pref = 'recon_pre_proc_1_65lmin_83mm_FOV2'
-iter = 150
+reco_dir = "/bigstore/adriaan/recons/evert/2020-02-19 3D paper dataset 1/2020-02-12/pre_proc_20mm_ball_62mmsec_03"
 
-for t in range(100,140):
-    vol = np.load(f'{fn_pref}_t{t}_{iter}.npy')[:,:,600:]
-    print(f"Converting t={t}...")
-    numpy2VTK(vol*200, f"test.{t}.vti")
-    # plot_qtgraph(vol)
-    # plot_volume(vol)
+for date, scan_lst in SCANS.items():
+    for scan in scan_lst:
+        reco_dir = "/bigstore/adriaan/recons/evert/2020-02-19 3D paper dataset 1/"
+        reco_dir = os.path.join(reco_dir, date, scan["projs_dir"])
 
+        for t in itertools.count():
+            filename = f"{reco_dir}/recon.{t}.vti"
+            if os.path.exists(filename):
+                continue
+
+            vol_filename = f'{reco_dir}/recon_t{t}.npy'
+            if os.path.exists(vol_filename):
+                # vol = np.load(f'recon_3d_{fn_pref}_t{t}.npy')[:, :, :]
+                vol = np.load(vol_filename)[:, :, :]
+                print(f"Converting {vol_filename}...")
+                numpy2VTK(vol*200, filename)
+
+                # plot_3d(vol)
+                # plot_qtgraph(vol)
+                # plot_volume(vol)
+                # exit(0)
+            else:
+                break

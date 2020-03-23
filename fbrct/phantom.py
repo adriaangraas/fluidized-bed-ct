@@ -1,5 +1,3 @@
-import tomophantom
-from tomophantom import TomoP3D, TomoP2D
 import numpy as np
 import odl
 
@@ -11,6 +9,9 @@ PHANTOM_3D_DOUBLE_BUBBLE_NONALIGNED = 1003
 
 def generate_3d_phantom_data(model_number, L, H, n, m, geometry, from_volume_accuracy=256,
                              path = '/ufs/adriaan/tmp/pycharm_project_639/resources/phantoms_3D.dat'):
+    import tomophantom
+    from tomophantom import TomoP3D, TomoP2D
+
     N_size = from_volume_accuracy  # number of voxels in x, y axis
     M_size = int(np.ceil(N_size / n * m))  # number of voxels in z axis
     bigger_size = np.max(N_size, M_size)
