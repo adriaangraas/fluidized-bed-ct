@@ -1,6 +1,5 @@
-from abc import ABC
-
-import numpy as np
+from fbrct.scan import StaticScan, Phantom, FluidizedBedScan, TraverseScan
+from pathlib import Path
 
 SOURCE_RADIUS = 94.5
 DETECTOR_RADIUS = 27.0
@@ -19,257 +18,18 @@ APPROX_VOXEL_WIDTH = DETECTOR_PIXEL_WIDTH / (
 APPROX_VOXEL_HEIGHT = DETECTOR_PIXEL_HEIGHT / (
     SOURCE_RADIUS + DETECTOR_RADIUS) * SOURCE_RADIUS
 
-# Log 2021-08-20.docx
-_MANUAL_SDD_1 = 120.8  # cm
-_MANUAL_SDD_2 = 121.5
-_MANUAL_SDD_3 = 123.1
-_MANUAL_COL_RADIUS = 6.0  # incl. wall
-_MANUAL_COL_DET_1 = 24.3  # from wall to det
-_MANUAL_COL_DET_2 = 23.8
-_MANUAL_COL_DET_3 = 26.4
+detector = {'rows': DETECTOR_ROWS,
+            'cols': DETECTOR_COLS,
+            'pixel_width': DETECTOR_PIXEL_WIDTH,
+            'pixel_height': DETECTOR_PIXEL_HEIGHT}
 
-MANUAL_SOURE_RADIUS = (
-    _MANUAL_SDD_1 - _MANUAL_COL_DET_1 - _MANUAL_COL_RADIUS / 2,
-    _MANUAL_SDD_2 - _MANUAL_COL_DET_2 - _MANUAL_COL_RADIUS / 2,
-    _MANUAL_SDD_3 - _MANUAL_COL_DET_3 - _MANUAL_COL_RADIUS / 2)
-MANUAL_DET_RADIUS = (
-    _MANUAL_COL_DET_1 + _MANUAL_COL_RADIUS / 2,
-    _MANUAL_COL_DET_2 + _MANUAL_COL_RADIUS / 2,
-    _MANUAL_COL_DET_3 + _MANUAL_COL_RADIUS / 2)
+calib_dir = str(Path(__file__).parent / 'calibration')
 
-
-def _manual_geometry(cams=(1, 2, 3), nr_projs=1):
-    from cate import xray, astra
-
-    geoms_all_cams = []
-    detector = xray.Detector(DETECTOR_ROWS, DETECTOR_COLS,
-                             DETECTOR_PIXEL_WIDTH, DETECTOR_PIXEL_HEIGHT)
-
-    for c, cam in enumerate(cams):
-        geom = xray.StaticGeometry(
-            source=np.array([MANUAL_SOURE_RADIUS[c], 0., 0.]),
-            detector=np.array([-MANUAL_DET_RADIUS[c], 0., 0.])
-        )
-
-        # cam 1,2,3 at angle 0, 120, 240 degrees
-        geom = xray.transform(geom, yaw=c * 1 / 3 * 2 * np.pi / 3)
-
-        geoms = []
-        ang_increment = 2 * np.pi / nr_projs
-        for i in range(nr_projs):
-            g = xray.transform(geom, yaw=i * ang_increment)
-            v = astra.geom2astravec(g, detector.todict())
-            geoms.append(v)
-
-        geoms_all_cams.append(geoms)
-
-    return geoms_all_cams
-
-
-def cate_to_astra(path, geom_scaling_factor=None):
-    import pickle
-    from cate import xray, astra
-    from numpy.lib.format import read_magic, _check_version, _read_array_header
-
-    class RenamingUnpickler(pickle.Unpickler):
-        def find_class(self, module, name):
-            if name == 'StaticGeometry':
-                name = 'Geometry'
-            return super().find_class(module, name)
-
-    with open(path, 'rb') as fp:
-        version = read_magic(fp)
-        _check_version(version)
-        dtype = _read_array_header(fp, version)[2]
-        assert dtype.hasobject
-        multicam_geom = RenamingUnpickler(fp).load()[0]
-
-    # multicam_geom = np.load(path, allow_pickle=True)[0]
-    detector = astra.Detector(DETECTOR_ROWS, DETECTOR_COLS,
-                             DETECTOR_PIXEL_WIDTH,
-                             DETECTOR_PIXEL_HEIGHT)
-    geoms = []
-    for cam, g in sorted(multicam_geom.items()):
-        v = astra.geom2astravec(g, detector.todict())
-        if geom_scaling_factor is not None:
-            v = np.array(v) * geom_scaling_factor
-
-        geoms.append(v)
-
-    return geoms
-
-
-def astra_to_rayve(vectors):
-    from astrapy.geom import Geometry, Detector
-    geoms = []
-    for vec in vectors:
-        u = np.array(vec[6:9])
-        v = np.array(vec[9:12])
-        geom = Geometry(
-            tube_pos=vec[0:3],
-            det_pos=vec[3:6],
-            u_unit=u / np.linalg.norm(u),
-            v_unit=v / np.linalg.norm(v),
-            detector=Detector(
-                rows=DETECTOR_ROWS,
-                cols=DETECTOR_COLS,
-                pixel_width=DETECTOR_PIXEL_WIDTH,
-                pixel_height=DETECTOR_PIXEL_HEIGHT))
-        geoms.append(geom)
-
-    return geoms
-
-
-class Phantom:
-    def __init__(self, diameter, position=None):
-        if position is not None:
-            if position not in ['center', 'side', 'wall']:
-                raise ValueError()
-
-        self.position = position
-        self.diameter = diameter
-
-    @property
-    def radius(self):
-        return self.diameter / 2
-
-
-class MovingPhantom(Phantom):
-    def __init__(self, diameter, interesting_time: slice = None, **kwargs):
-        if interesting_time is None:
-            interesting_time = slice(None)  # :, basically
-
-        self.interesting_time = interesting_time
-
-        super().__init__(diameter, **kwargs)
-
-
-class Scan(ABC):
-    def __init__(self,
-                 name,
-                 projs_dir,
-                 geometry=None,
-                 geometry_scaling_factor=None,
-                 geometry_rotation_offset=0.0,
-                 geometry_manual=None,
-                 framerate=None,
-                 cameras=(1, 2, 3),
-                 references=None,
-                 darks=None,
-                 normalization=None):
-        if references is None:
-            references = []
-        self.name = name
-        self.projs_dir = projs_dir
-        self._geometry = geometry
-        self._geometry_scaling_factor = geometry_scaling_factor
-        self._geometry_rotation_offset = geometry_rotation_offset
-        self._geometry_manual = geometry_manual
-        self.framerate = framerate
-        self.cameras = cameras
-        self.phantoms = []
-        self.references = references
-        self.darks = darks
-        self.normalization = normalization
-
-    def add_phantom(self, phantom: Phantom):
-        self.phantoms.append(phantom)
-
-    @property
-    def geometry(self):
-        raise NotImplementedError
-
-    def __str__(self):
-        return f'Scan in directory {self.projs_dir}'
-
-
-class StaticScan(Scan):
-    """Scan made from a static object.
-
-    The scanned object does not change over time.
-    The scan be on a rotation table though.
-    If a scan features a static and dynamic part (for example, when in the first
-    frames there is no movement) then two different `Scan` objects have to be
-    made, with different projection ranges.
-    """
-
-    def __init__(self,
-                 *args,
-                 proj_start: int,
-                 proj_end: int,
-                 is_rotational: bool = False,
-                 is_full: bool = False,
-                 **kwargs):
-        assert proj_end > proj_start > 0
-        self.proj_start = proj_start
-        self.proj_end = proj_end
-        self.is_rotational = is_rotational
-        self.is_full = is_full
-        super().__init__(*args, **kwargs)
-
-    @property
-    def nr_projs(self):
-        return self.proj_end - self.proj_start
-
-    @property
-    def geometry(self):
-        if self._geometry_manual is True:
-            return _manual_geometry(self.cameras, self.nr_projs)
-
-        from cate import xray, astra
-        multicam_geom = np.load(self._geometry, allow_pickle=True)[0]
-        geoms_all_cams = {}
-        detector = xray.Detector(DETECTOR_ROWS, DETECTOR_COLS,
-                                 DETECTOR_PIXEL_WIDTH, DETECTOR_PIXEL_HEIGHT)
-
-        for cam in self.cameras:
-            geoms = []
-            ang_increment = 2 * np.pi / self.nr_projs if self.is_rotational else 0.
-            for i in range(self.nr_projs):
-                g = xray.transform(
-                    multicam_geom[cam],
-                    yaw=self._geometry_rotation_offset + i * ang_increment)
-                v = astra.geom2astravec(g, detector.todict())
-                if self._geometry_scaling_factor is not None:
-                    v = np.array(v) * self._geometry_scaling_factor
-
-                geoms.append(v)
-
-            geoms_all_cams[cam] = geoms
-
-        return geoms_all_cams
-
-
-class DynamicScan(Scan):
-    def __init__(self, *args, ref_ran=None, ref_normalization_ran=None,
-                 timeframes=None, **kwargs):
-        self.ref_ran = ref_ran
-        self.ref_normalization_ran = ref_normalization_ran
-        self.timeframes = timeframes
-        super().__init__(*args, **kwargs)
-
-    @property
-    def geometry(self):
-        if self._geometry_manual:
-            geoms = _manual_geometry(self.cameras, nr_projs=1)
-            return [g[0] for g in geoms]  # flattening
-
-        if self._geometry:
-            return cate_to_astra(self._geometry, self._geometry_scaling_factor)
-
-
-class TraverseScan(DynamicScan):
-    def __init__(self, *args, motor_velocity, **kwargs):
-        self.expected_velocity = motor_velocity
-        super().__init__(*args, **kwargs)
-
-
-class FluidizedBedScan(DynamicScan):
-    def __init__(self, *args, liter_per_min, col_inner_diameter, **kwargs):
-        self.liter_per_min = liter_per_min
-        self.col_inner_diameter = col_inner_diameter
-        super().__init__(*args, **kwargs)
-
+data_dir_19 = "/export/scratch2/adriaan/mnt/scratch2/evert/data/2021-08-19"
+data_dir_20 = "/export/scratch2/adriaan/mnt/scratch2/evert/data/2021-08-20"
+data_dir_23 = "/export/scratch2/adriaan/mnt/scratch3/evert/data/2021-08-23"
+data_dir_24 = "/export/scratch2/adriaan/mnt/scratch3/evert/data/2021-08-24"
+calib = f'{calib_dir}/geom_pre_proc_Calibration_needle_phantom_30degsec_table474mm_calibrated_on_26aug2021.npy'
 
 SCANS = []
 ball_20mm = Phantom(2, None)
@@ -283,17 +43,6 @@ def get_scans(name: str) -> list:
             selected.append(s)
 
     return selected
-
-
-from pathlib import Path
-
-calib_dir = str(Path(__file__).parent / 'calibration')
-
-data_dir_19 = "/export/scratch2/adriaan/evert/data/2021-08-19"
-data_dir_20 = "/export/scratch2/adriaan/evert/data/2021-08-20"
-data_dir_23 = "/export/scratch3/adriaan/evert/data/2021-08-23"
-data_dir_24 = "/export/scratch3/adriaan/evert/data/2021-08-24"
-calib = f'{calib_dir}/geom_pre_proc_Calibration_needle_phantom_30degsec_table474mm_calibrated_on_26aug2021.npy'
 
 ###############################################################################
 # Modifications for testing on Scan3
@@ -575,6 +324,7 @@ ref_ran = range(1, 100),
 
 _19_empty_rotating = StaticScan(
     "2021-08-19_pre_proc_Empty_30degsec",
+    detector,
     f'{data_dir_19}/pre_proc_Empty_30degsec',
     proj_start=1,
     proj_end=100,
@@ -634,6 +384,7 @@ for mmsec, ran in [
         for scaling in ['', '_noscaling']:
             _scan = TraverseScan(
                 f'Small_marble_{pos}_{mmsec}mmsec_65Hz{scaling}',
+                detector,
                 f'{data_dir_20}/pre_proc_Small_marble_{pos}_{mmsec}mmsec_65Hz',
                 motor_velocity=mmsec,
                 # darks_dir='/home/adriaan/ownCloud3/pre_proc_Dark_frames',
@@ -673,6 +424,7 @@ for mmsec, ran in [
 ###############################################################################
 _23_full_rotating = StaticScan(
     "2021-08-23_pre_proc_Full_30degsec",
+    detector,
     f'{data_dir_23}/pre_proc_Full_30degsec',
     proj_start=1026,
     proj_end=1800,
@@ -686,6 +438,7 @@ SCANS.append(_23_full_rotating)
 for size in ['10mm', '14mm', '23mm']:
     _scan = StaticScan(
         f"2021-08-23_3x{size}_foamballs_vertical_refempty",
+        detector,
         f'{data_dir_23}/pre_proc_3x{size}_foamballs_vertical',
         proj_start=1025,
         proj_end=1801,
@@ -700,6 +453,7 @@ for size in ['10mm', '14mm', '23mm']:
 for lmin in [19, 20, 22, 25]:
     _scan = FluidizedBedScan(
         f"2021-08-23_{lmin}Lmin_reffull",
+        detector,
         f'{data_dir_23}/pre_proc_{lmin}Lmin',
         liter_per_min=lmin,
         ref_ran=range(0, 10),
@@ -716,6 +470,7 @@ for lmin in [19, 20, 22, 25]:
 ###############################################################################
 _24_darks = StaticScan(
     "2021-08-24_pre_proc_Dark",
+    detector,
     f'{data_dir_24}/pre_proc_Dark',
     proj_start=1,
     proj_end=1000,
@@ -726,6 +481,7 @@ SCANS.append(_24_darks)
 
 _24_empty_rotating = StaticScan(
     "2021-08-24_pre_proc_Empty_30degsec_nonrotating",
+    detector,
     f'{data_dir_24}/pre_proc_Empty_30degsec',
     proj_start=1026,
     proj_end=1800,
@@ -738,6 +494,7 @@ SCANS.append(_24_empty_rotating)
 
 _24_full_rotating = StaticScan(
     "2021-08-24_pre_proc_Full_30degsec_rotating",
+    detector,
     f'{data_dir_24}/pre_proc_Full_30degsec',
     proj_start=1026,
     proj_end=1800,
@@ -750,6 +507,7 @@ SCANS.append(_24_full_rotating)
 
 _24_empty_nonrotating = StaticScan(
     "2021-08-24_pre_proc_Empty_30degsec_nonrotating",
+    detector,
     f'{data_dir_24}/pre_proc_Empty_30degsec',
     proj_start=1,
     proj_end=1000,
@@ -764,6 +522,7 @@ for nr, pos in [(2, 'horizontal'), (3, 'vertical_wall')]:
     for size in [10, 14, 23]:
         _scan = StaticScan(
             f"2021-08-24_{nr}x{size}mm_foamballs_{pos}_refempty",
+            detector,
             f'{data_dir_24}/pre_proc_{nr}x{size}mm_foamballs_{pos}',
             proj_start=1025,
             proj_end=1799,
@@ -776,6 +535,7 @@ for nr, pos in [(2, 'horizontal'), (3, 'vertical_wall')]:
 
 _scan = StaticScan(
     "2021-08-24_10mm_14mm_23mm_horizontal_refempty",
+    detector,
     f'{data_dir_24}/pre_proc_10mm_14mm_23mm_foamballs_horizontal',
     proj_start=1025,
     proj_end=1799,
@@ -787,6 +547,7 @@ _scan = StaticScan(
 
 _scan = StaticScan(
     "2021-08-24_10mm_23mm_horizontal",
+    detector,
     f'{data_dir_24}/pre_proc_10mm_23mm_foamballs_horizontal',
     proj_start=1025,
     proj_end=1799,
