@@ -1,3 +1,4 @@
+from abc import abstractmethod
 from typing import Any
 
 import numpy as np
@@ -7,57 +8,66 @@ from fbrct.loader import load, preprocess
 
 def _astra_fdk_algo(volume_geom, projection_geom, volume_id, sinogram_id):
     import astra
-    proj_cfg = {'type': 'cuda3d',
-                'VolumeGeometry': volume_geom,
-                'ProjectionGeometry': projection_geom,
-                'options': {}}
+
+    proj_cfg = {
+        "type": "cuda3d",
+        "VolumeGeometry": volume_geom,
+        "ProjectionGeometry": projection_geom,
+        "options": {},
+    }
 
     projector_id = astra.projector3d.create(proj_cfg)
     astra.experimental.accumulate_FDK(projector_id, volume_id, sinogram_id)
 
 
-def _astra_sirt_algo(volume_id, sinogram_id, iters, min_constraint=0.,
-                     max_constraint=None):
+def _astra_sirt_algo(
+    volume_id, sinogram_id, iters, min_constraint=0.0, max_constraint=None
+):
     import astra
-    cfg = astra.astra_dict(
-        'SIRT3D_CUDA')  # 'FDK_CUDA', 'SIRT3D_CUDA', 'CGLS3D_CUDA',
-    cfg['ReconstructionDataId'] = volume_id
-    cfg['ProjectionDataId'] = sinogram_id
-    cfg['option'] = {'MinConstraint': min_constraint,
-                     'MaxConstraint': max_constraint}
+
+    cfg = astra.astra_dict("SIRT3D_CUDA")  # 'FDK_CUDA', 'SIRT3D_CUDA', 'CGLS3D_CUDA',
+    cfg["ReconstructionDataId"] = volume_id
+    cfg["ProjectionDataId"] = sinogram_id
+    cfg["option"] = {"MinConstraint": min_constraint, "MaxConstraint": max_constraint}
 
     algo_id = astra.algorithm.create(cfg)
     astra.algorithm.run(algo_id, iters)  # nr iters
 
 
-def _astra_nesterov_algo(volume_geom, projection_geom, volume_id, sinogram_id,
-                         iters: int = 50, min_constraint: float = 0.):
+def _astra_nesterov_algo(
+    volume_geom,
+    projection_geom,
+    volume_id,
+    sinogram_id,
+    iters: int = 50,
+    min_constraint: float = 0.0,
+):
     from fbrct.nesterov import AcceleratedGradientPlugin
     import astra
 
     astra.plugin.register(AcceleratedGradientPlugin)
-    projector_id = astra.create_projector('cuda3d', projection_geom,
-                                          volume_geom)
-    cfg = astra.astra_dict('AGD-PLUGIN')
-    cfg['ProjectionDataId'] = sinogram_id
-    cfg['ReconstructionDataId'] = volume_id
-    cfg['ProjectorId'] = projector_id
-    cfg['option'] = {}
-    cfg['option']['MinConstraint'] = min_constraint
+    projector_id = astra.create_projector("cuda3d", projection_geom, volume_geom)
+    cfg = astra.astra_dict("AGD-PLUGIN")
+    cfg["ProjectionDataId"] = sinogram_id
+    cfg["ReconstructionDataId"] = volume_id
+    cfg["ProjectorId"] = projector_id
+    cfg["option"] = {}
+    cfg["option"]["MinConstraint"] = min_constraint
     alg_id = astra.algorithm.create(cfg)
 
     astra.algorithm.run(alg_id, iters)
 
 
 class Reconstruction:
-    def __init__(self,
-                 path: str,
-                 detector,
-                 expected_voxel_size_x: float,
-                 expected_voxel_size_z: float,
-                 det_subsampling=1,
-                 verbose=True,
-                 ):
+    def __init__(
+        self,
+        path: str,
+        detector,
+        expected_voxel_size_x: float,
+        expected_voxel_size_z: float,
+        det_subsampling=1,
+        verbose=True,
+    ):
         """
         From the data there is two types of reconstructions that can be
         performed.
@@ -81,78 +91,79 @@ class Reconstruction:
         self._expected_voxel_size_x = expected_voxel_size_x
         self._expected_voxel_size_z = expected_voxel_size_z
 
-    def load_sinogram(self,
-                      t_range=None,
-                      cameras=None,
-                      darks_path=None,
-                      ref_path=None,
-                      ref_lower_density=False,
-                      ref_mode='static',
-                      ref_projs=None,
-                      darks_ran: range = None,
-                      ref_normalization_path=None,
-                      ref_normalization_projs: range = None,
-                      ):
+    def load_sinogram(
+        self,
+        t_range=None,
+        cameras=None,
+        darks_path=None,
+        ref_path=None,
+        ref_lower_density=False,
+        ref_mode="static",
+        ref_projs=None,
+        darks_ran: range = None,
+        ref_normalization_path=None,
+        ref_normalization_projs: range = None,
+    ):
         """Loads and preprocesses the sinogram for .
 
         :param t_range:
             Range of the projections to use for reconstructoin
-        :param cameras: 
+        :param cameras:
             If `None` takes all detectors, otherwise Sequence of `int`.
         :return:
-            np.ndarray 
+            np.ndarray
         """
         if np.isscalar(t_range):
             t_range = range(t_range, t_range + 1)
 
         load_kwargs = {}
         if cameras is not None:
-            load_kwargs['cameras'] = cameras
+            load_kwargs["cameras"] = cameras
 
         if ref_path is not None:
             p = load(self._path, t_range, **load_kwargs)
             if not ref_projs:
                 ref_projs = None  # use all projs for referencing (static)
-                if ref_mode == 'reco':
+                if ref_mode == "reco":
                     ref_projs = t_range  # reference one-on-one
 
-            preproc_kwargs = {'ref': load(ref_path, ref_projs, **load_kwargs),
-                              'ref_mode': ref_mode}
+            preproc_kwargs = {
+                "ref": load(ref_path, ref_projs, **load_kwargs),
+                "ref_mode": ref_mode,
+            }
             if darks_path is not None:
-                preproc_kwargs['dark'] = load(darks_path, darks_ran,
-                                              **load_kwargs)
+                preproc_kwargs["dark"] = load(darks_path, darks_ran, **load_kwargs)
             if ref_normalization_path is not None:
-                preproc_kwargs['ref_normalization'] = load(
-                    ref_normalization_path,
-                    ref_normalization_projs, **load_kwargs)
+                preproc_kwargs["ref_normalization"] = load(
+                    ref_normalization_path, ref_normalization_projs, **load_kwargs
+                )
 
-            p = preprocess(p, ref_lower_density=ref_lower_density,
-                           **preproc_kwargs)
+            p = preprocess(p, ref_lower_density=ref_lower_density, **preproc_kwargs)
         else:
             p = load(self._path, t_range, **load_kwargs)
             preproc_kwargs = {}
             if darks_path is not None:
-                preproc_kwargs['dark'] = load(darks_path, darks_ran,
-                                              **load_kwargs)
+                preproc_kwargs["dark"] = load(darks_path, darks_ran, **load_kwargs)
             p = preprocess(p, **preproc_kwargs)
 
         return np.ascontiguousarray(p.astype(np.float32))
 
     @staticmethod
-    def compute_volume_dimensions(voxel_width, voxel_height, det,
-                                  nr_voxels_x=None, det_subsampling: int = 1):
+    def compute_volume_dimensions(
+        voxel_width, voxel_height, det, nr_voxels_x=None, det_subsampling: int = 1
+    ):
         # make voxel size larger if a small number of voxels is needed, and
         # vice versa
         if nr_voxels_x is None:
-            nr_voxels_x = det['cols']
-            nr_voxels_z = det['rows']
+            nr_voxels_x = det["cols"]
+            nr_voxels_z = det["rows"]
             scaling = 1
         else:
             # the amount of z-voxels should be proportional the detector dimensions
-            estimated_nr_voxels_z = nr_voxels_x / det['cols'] * det['rows']
+            estimated_nr_voxels_z = nr_voxels_x / det["cols"] * det["rows"]
             nr_voxels_z = int(np.ceil(estimated_nr_voxels_z))
             # since voxels_x is given, we need to scale the suggested voxel size
-            scaling = nr_voxels_x / det['cols']
+            scaling = nr_voxels_x / det["cols"]
 
         voxel_width /= scaling
         voxel_height /= scaling
@@ -174,10 +185,38 @@ class Reconstruction:
             self._expected_voxel_size_z,
             self.detector,
             nr_voxels_x,
-            self.det_subsampling)
+            self.det_subsampling,
+        )
 
     @staticmethod
     def clear():
+        pass
+
+    @abstractmethod
+    def sino_gpu_and_proj_geom(self, sino, geoms):
+        pass
+
+    @abstractmethod
+    def backward(
+        self,
+        proj_id,
+        proj_geom,
+        algo,
+        voxels_x,
+        iters,
+        min_constraint,
+        max_constraint,
+        col_mask,
+        callback,
+    ):
+        pass
+
+    @abstractmethod
+    def volume(self, vol_id):
+        pass
+
+    @abstractmethod
+    def vol_params(self, voxels_x):
         pass
 
 
@@ -187,78 +226,99 @@ class AstraReconstruction(Reconstruction):
 
     def empty_volume_gpu(self, voxels_x=None):
         import astra
+
         voxels_x, voxels_z, w, h = self._compute_volume_dimensions(voxels_x)
-        print(f"Creating empty GPU volume {voxels_x}:{voxels_x}:{voxels_z} "
-              f"with size {w}:{w}:{h}.")
-        vol_geom = astra.create_vol_geom(voxels_x, voxels_x, voxels_z,
-                                         -w, w, -w, w, -h, h)
-        vol_id = astra.data3d.create('-vol', vol_geom)
+        print(
+            f"Creating empty GPU volume {voxels_x}:{voxels_x}:{voxels_z} "
+            f"with size {w}:{w}:{h}."
+        )
+        vol_geom = astra.create_vol_geom(
+            voxels_x, voxels_x, voxels_z, -w, w, -w, w, -h, h
+        )
+        vol_id = astra.data3d.create("-vol", vol_geom)
         return vol_id, vol_geom
 
-    def sino_gpu_and_proj_geom(self,
-                               sinogram: Any,
-                               vectors: np.ndarray):
+    def sino_gpu_and_proj_geom(self, sinogram: Any, vectors: np.ndarray):
         import astra
+
         det = self.detector
-        rows = det['rows']
-        cols = det['cols']
+        rows = det["rows"]
+        cols = det["cols"]
 
         assert rows % self.det_subsampling == 0
         assert cols % self.det_subsampling == 0
 
         proj_geom = astra.create_proj_geom(
-            'cone_vec',
+            "cone_vec",
             rows // self.det_subsampling,
             cols // self.det_subsampling,
-            np.array(vectors))
-        proj_id = astra.data3d.create('-sino', proj_geom, sinogram)
+            np.array(vectors),
+        )
+        proj_id = astra.data3d.create("-sino", proj_geom, sinogram)
         return proj_id, proj_geom
 
-    def backward(self, proj_id, proj_geom,
-                 algo='sirt', voxels_x=None, iters=200,
-                 min_constraint=0., max_constraint=None,
-                 **kwargs):
+    def backward(
+        self,
+        proj_id,
+        proj_geom,
+        algo="sirt",
+        voxels_x=None,
+        iters=200,
+        min_constraint=0.0,
+        max_constraint=None,
+        **kwargs,
+    ):
 
         vol_id, vol_geom = self.empty_volume_gpu(voxels_x)
 
         print("Algorithm starts...")
         algo = algo.lower()
-        if algo == 'sirt':
-            _astra_sirt_algo(vol_id, proj_id, iters,
-                             min_constraint=min_constraint,
-                             max_constraint=max_constraint)
-        elif algo == 'fdk':
+        if algo == "sirt":
+            _astra_sirt_algo(
+                vol_id,
+                proj_id,
+                iters,
+                min_constraint=min_constraint,
+                max_constraint=max_constraint,
+            )
+        elif algo == "fdk":
             _astra_fdk_algo(vol_geom, proj_geom, vol_id, proj_id)
-        elif algo == 'nesterov':
-            _astra_nesterov_algo(vol_geom, proj_geom, vol_id, proj_id,
-                                 iters=iters,
-                                 min_constraint=min_constraint)
+        elif algo == "nesterov":
+            _astra_nesterov_algo(
+                vol_geom,
+                proj_geom,
+                vol_id,
+                proj_id,
+                iters=iters,
+                min_constraint=min_constraint,
+            )
         else:
             raise ValueError("Algorithm value incorrect.")
 
         return vol_id, vol_geom
 
     @staticmethod
-    def forward(volume_id, volume_geom, projection_geom,
-                returnData=False):
-        return astra.creators.create_sino3d_gpu(volume_id,
-                                                projection_geom,
-                                                volume_geom,
-                                                returnData=returnData)
+    def forward(volume_id, volume_geom, projection_geom, returnData=False):
+        return astra.creators.create_sino3d_gpu(
+            volume_id, projection_geom, volume_geom, returnData=returnData
+        )
 
     @staticmethod
     def volume(volume_id):
         import astra
+
         return astra.data3d.get(volume_id)
 
     @staticmethod
     def sinogram(sinogram_id):
         import astra
+
         return astra.data3d.get(sinogram_id)
 
     @staticmethod
     def clear():
         import astra
+
         # del self._sinogram  # free RAM before loading volume
         astra.clear()
 
@@ -267,10 +327,9 @@ class RayveReconstruction(Reconstruction):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def sino_gpu_and_proj_geom(self,
-                               sinogram: Any,
-                               vectors: np.ndarray):
+    def sino_gpu_and_proj_geom(self, sinogram: Any, vectors: np.ndarray):
         import astrapy
+
         # det = self.detector
         # rayve_det = astrapy.Detector(det['rows'], det['cols'], pw, ph)
 
@@ -294,46 +353,54 @@ class RayveReconstruction(Reconstruction):
                 u_unit=u / np.linalg.norm(u),
                 v_unit=v / np.linalg.norm(v),
                 detector=astrapy.Detector(
-                    rows=self.detector['rows'],
-                    cols=self.detector['cols'],
+                    rows=self.detector["rows"],
+                    cols=self.detector["cols"],
                     pixel_width=np.linalg.norm(u),
-                    pixel_height=np.linalg.norm(v)))
+                    pixel_height=np.linalg.norm(v),
+                ),
+            )
             geoms.append(geom)
 
         return sinogram, geoms
 
     def _compute_volume_dimensions(self, nr_voxels_x):
         # can't have anisotropic voxels yet
-        iso_voxel_size = min(self._expected_voxel_size_x,
-                             self._expected_voxel_size_z)
+        iso_voxel_size = min(self._expected_voxel_size_x, self._expected_voxel_size_z)
         return self.compute_volume_dimensions(
             iso_voxel_size,
             iso_voxel_size,
             self.detector,
             nr_voxels_x,
-            self.det_subsampling)
+            self.det_subsampling,
+        )
 
     def vol_params(self, voxels_x):
         import astrapy
+
         _, _, w, h = self._compute_volume_dimensions(voxels_x)
 
         w = 5.5 / 2
         vxl_sz = w / voxels_x
         h = np.ceil(h / vxl_sz) * vxl_sz
-        return astrapy.vol_params(
-            [voxels_x, voxels_x, None],
-            [-w, -w, -h],
-            [w, w, h])
+        return astrapy.vol_params([voxels_x, voxels_x, None], [-w, -w, -h], [w, w, h])
 
-    def backward(self, proj, geom,
-                 algo='sirt', voxels_x=None, iters=200,
-                 min_constraint=None, max_constraint=None,
-                 vol_mask=None,
-                 col_mask=False,
-                 col_mask_percentage=None,
-                 callback=None,
-                 vol_rotation=None):
+    def backward(
+        self,
+        proj,
+        geom,
+        algo="sirt",
+        voxels_x=None,
+        iters=200,
+        min_constraint=None,
+        max_constraint=None,
+        vol_mask=None,
+        col_mask=False,
+        col_mask_percentage=None,
+        callback=None,
+        vol_rotation=None,
+    ):
         import astrapy
+
         vol_shp, vol_min, vol_max, vxl_sz = self.vol_params(voxels_x)
 
         # proj = np.swapaxes(proj, 0, 1)
@@ -349,6 +416,7 @@ class RayveReconstruction(Reconstruction):
             # col_mask = (col_mask > 0.5).astype(np.float)
 
             from fbrct import column_mask
+
             # radius = int(voxels_x // 2 * col_mask_percentage)
             col_mask *= column_mask(vol_shp)
 
@@ -362,7 +430,7 @@ class RayveReconstruction(Reconstruction):
         # plt.show()
 
         algo = algo.lower()
-        if algo == 'sirt':
+        if algo == "sirt":
             vol_gpu = astrapy.sirt_experimental(
                 projections=proj,
                 geometry=geom,
@@ -375,10 +443,10 @@ class RayveReconstruction(Reconstruction):
                 max_constraint=max_constraint,
                 use_scaling=False,
                 chunk_size=200,
-                algo='gpu',
-                callback=callback
+                algo="gpu",
+                callback=callback,
             )
-        elif algo == 'fdk':
+        elif algo == "fdk":
             vol_gpu = astrapy.fdk(
                 projections=proj,
                 geometry=geom,
