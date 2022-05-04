@@ -1,29 +1,32 @@
 import argparse
 import itertools
+from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
 import tifffile
 import os
 
-import settings
 from fbrct import loader, reco
-from settings import *
+import scripts.settings as sett
+from fbrct.reco import Reconstruction
+from scripts.settings import Scan, DynamicScan, StaticScan, FluidizedBedScan
 
 
 def _reco(projs_dir):
     """Generate a reconstruction object."""
 
     detector = {
-        'rows': DETECTOR_ROWS,
-        'cols': DETECTOR_COLS,
-        'pixel_width': DETECTOR_PIXEL_WIDTH,
-        'pixel_height': DETECTOR_PIXEL_HEIGHT}
+        'rows': sett.DETECTOR_ROWS,
+        'cols': sett.DETECTOR_COLS,
+        'pixel_width': sett.DETECTOR_PIXEL_WIDTH,
+        'pixel_height': sett.DETECTOR_PIXEL_HEIGHT}
 
     return reco.RayveReconstruction(
         projs_dir,
         detector=detector,
-        expected_voxel_size_x=APPROX_VOXEL_WIDTH,
-        expected_voxel_size_z=APPROX_VOXEL_HEIGHT)
+        expected_voxel_size_x=sett.APPROX_VOXEL_WIDTH,
+        expected_voxel_size_z=sett.APPROX_VOXEL_HEIGHT)
 
 
 def _plot(x):
@@ -38,12 +41,12 @@ def _plot(x):
 
 def _plot_sinos(y, pixel_start, pixel_end):
     from fbrct.util import plot_projs
-    plot_projs(y, DETECTOR_PIXEL_WIDTH, DETECTOR_PIXEL_HEIGHT,
+    plot_projs(y, sett.DETECTOR_PIXEL_WIDTH, sett.DETECTOR_PIXEL_HEIGHT,
                pixel_start, pixel_end)
 
 
 def reconstruct(
-    scan: Scan,
+    scan: sett.Scan,
     recodir: str,
     ref: Scan = None,
     voxels_x: int = 300,
@@ -83,33 +86,30 @@ def reconstruct(
             plt.imshow(x[..., x.shape[2] // 2+100].get())
             plt.pause(.0001)
 
-    reco = _reco(scan.projs_dir)
+    reconstructor = _reco(scan.projs_dir)
 
     if isinstance(scan, DynamicScan):
         if scan.timeframes is None:
-            scan_timeframes = loader.projection_numbers(scan.projs_dir)
+            scan_timeframes = loader.projection_numbers(scan.projs_dir)  # all frames
         else:
             scan_timeframes = scan.timeframes
 
         if timeframes is not None:
             if not np.all([s in scan_timeframes for s in timeframes]):
                 raise ValueError("One or more timeframes are not in the set of"
-                                 " the scan's possible timeframes.")
+                                 " the scan's defined timeframes.")
         else:
             timeframes = scan_timeframes
 
-        sino = _reconstruct_dynamic(reco, scan, timeframes=timeframes, **kwargs)
-        geom = scan.geometry
-
+        sino = _reconstruct_dynamic(reconstructor, scan, timeframes=timeframes, **kwargs)
+        # per-frame reconstruction:
         for t, sino_t in zip(timeframes, sino):
-            _inner_reco(scan, reco, sino_t, geom, voxels_x, iters,
-                        callbackf=_callbackf,
-                        t=t, save=save, locking=locking)
-        reco.clear()
-
+            _inner_reco(scan, reconstructor, sino_t, scan.geometry, voxels_x, iters,
+                        callbackf=_callbackf, t=t, save=save, locking=locking)
+        reconstructor.clear()
     elif isinstance(scan, StaticScan):
         projs, geoms = _reconstruct_static(
-            reco, scan, ref, plot=plot, **kwargs)
+            reconstructor, scan, ref, plot=plot, **kwargs)
         # vol_id, vol_geom = reco.backward(
         #     proj_id,
         #     proj_geom,
@@ -120,20 +120,28 @@ def reconstruct(
         #     max_constraint=1.,
         #     callback=callbackf)
         # x = reco.volume(vol_id)
-        _inner_reco(scan, reco, projs, geoms, voxels_x, iters,
+        _inner_reco(scan, reconstructor, projs, geoms, voxels_x, iters,
                     callbackf=_callbackf, locking=locking,
                     save=save)
     else:
         raise ValueError()
 
-    reco.clear()
+    reconstructor.clear()
 
 
 def _reconstruct_dynamic(
     reco,
     scan: Scan,
     timeframes=None,
-    normalization=None):
+    normalization=None
+):
+    """
+
+    Parameters
+    ----------
+    normalization : object
+    """
+
     ref_projs = []
     ref_path = None
     ref_lower_density = None
@@ -255,7 +263,12 @@ def _reconstruct_static(
     return sino_flat, geom_flat
 
 
-def _inner_reco(scan, reco, sino, geoms, voxels_x, iters,
+def _inner_reco(scan: Scan,
+                reco: Reconstruction,
+                sino,
+                geoms,
+                voxels_x,
+                iters,
                 t=None,
                 callbackf=None,
                 locking=False,
@@ -362,8 +375,8 @@ def _inner_reco(scan, reco, sino, geoms, voxels_x, iters,
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Reconstruction")
 
-    parser.add_argument("--name", type=str,
-                        help="Name of the experiment to run."
+    parser.add_argument("--scan", type=str,
+                        help="Name of the Scan to run."
                              " Must be available in settings.py. Runs"
                              " all SCANS from settings.py if not provided.",
                         default='all')
@@ -405,7 +418,7 @@ if __name__ == '__main__':
     parser.add_argument("--locking", action='store_true', default=False)
 
     args = parser.parse_args()
-    name = args.name
+    name = args.scan
     refname = args.ref_name
     algo = args.algo
     iters = args.iters
@@ -422,11 +435,11 @@ if __name__ == '__main__':
         plt.rcParams.update({'figure.raise_window': False})
 
     if name != 'all':
-        scans = settings.get_scans(name)
+        scans = sett.get_scans(name)
         if len(scans) == 0:
             raise ValueError(f"Scan {name} not found.")
     else:
-        scans = SCANS
+        scans = sett.SCANS
 
     kwargs = {'plot': plot, 'locking': locking, 'save': save}
     if algo is not None:
@@ -449,15 +462,23 @@ if __name__ == '__main__':
         kwargs['angles'] = [angle]
 
     for scan in scans:
-        if refname is None:
-            if len(scan.references) > 0:
-                ref = scan.references[0]
-        else:
-            refs = settings.get_scans(refname)
-            assert len(refs) == 1
-            ref = refs[0]
+        try:
+            if refname is None:
+                if len(scan.references) == 1:
+                    ref = scan.references[0]
+                else:
+                    raise ValueError(
+                        f"Zero, or multiple references defined for scan {scan.name}. Either"
+                        f" define a reference in settings.py or provide with which reference"
+                        f" to reconstruct.")
+            else:
+                refs = sett.get_scans(refname)
+                assert len(refs) == 1
+                ref = refs[0]
 
-        if scan.normalization is not None:
-            kwargs['normalization'] = scan.normalization
+            if scan.normalization is not None:
+                kwargs['normalization'] = scan.normalization
 
-        reconstruct(scan, recodir, ref, **kwargs)
+            reconstruct(scan, recodir, ref, **kwargs)
+        except ValueError:
+            pass
