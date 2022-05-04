@@ -2,38 +2,40 @@ import argparse
 import itertools
 from pathlib import Path
 
+
 import matplotlib.pyplot as plt
 import numpy as np
 import tifffile
 import os
 
-from fbrct import loader, reco
+from fbrct import loader, reco, Scan, DynamicScan, StaticScan, FluidizedBedScan
 import scripts.settings as sett
 from fbrct.reco import Reconstruction
-from scripts.settings import Scan, DynamicScan, StaticScan, FluidizedBedScan
 
 
 def _reco(projs_dir):
     """Generate a reconstruction object."""
 
     detector = {
-        'rows': sett.DETECTOR_ROWS,
-        'cols': sett.DETECTOR_COLS,
-        'pixel_width': sett.DETECTOR_PIXEL_WIDTH,
-        'pixel_height': sett.DETECTOR_PIXEL_HEIGHT}
+        "rows": sett.DETECTOR_ROWS,
+        "cols": sett.DETECTOR_COLS,
+        "pixel_width": sett.DETECTOR_PIXEL_WIDTH,
+        "pixel_height": sett.DETECTOR_PIXEL_HEIGHT,
+    }
 
     return reco.RayveReconstruction(
         projs_dir,
         detector=detector,
         expected_voxel_size_x=sett.APPROX_VOXEL_WIDTH,
-        expected_voxel_size_z=sett.APPROX_VOXEL_HEIGHT)
+        expected_voxel_size_z=sett.APPROX_VOXEL_HEIGHT,
+    )
 
 
 def _plot(x):
     import pyqtgraph as pq
-    pq.image(x)
-
     import matplotlib.pyplot as plt
+
+    pq.image(x)
     plt.figure()
     plt.imshow(x[..., x.shape[2] // 2])
     plt.show()
@@ -41,22 +43,24 @@ def _plot(x):
 
 def _plot_sinos(y, pixel_start, pixel_end):
     from fbrct.util import plot_projs
-    plot_projs(y, sett.DETECTOR_PIXEL_WIDTH, sett.DETECTOR_PIXEL_HEIGHT,
-               pixel_start, pixel_end)
+
+    plot_projs(
+        y, sett.DETECTOR_PIXEL_WIDTH, sett.DETECTOR_PIXEL_HEIGHT, pixel_start, pixel_end
+    )
 
 
 def reconstruct(
-    scan: sett.Scan,
+    scan: Scan,
     recodir: str,
     ref: Scan = None,
     voxels_x: int = 300,
     plot: bool = False,
     iters: int = 200,
-    locking = False,
-    save = False,
-    algo = 'sirt',
+    locking=False,
+    save=False,
+    algo="sirt",
     timeframes=None,
-    **kwargs
+    **kwargs,
 ):
     print(f"Next up is {scan}...")
 
@@ -68,23 +72,24 @@ def reconstruct(
             # if i % 3 == 0:
             # x[x < 0.001] = 0.
             import matplotlib.pyplot as plt
-            plt.figure('callbackf')
+
+            plt.figure("callbackf")
             plt.cla()
             # plt.imshow(x[..., 567].get())
             # plt.imshow(x[..., 278].get())
             # plt.imshow(x[..., 400].get())
             plt.imshow(x[..., x.shape[2] // 2].get())
-            plt.pause(.0001)
+            plt.pause(0.0001)
 
-            plt.figure('callbackf2')
+            plt.figure("callbackf2")
             plt.cla()
-            plt.imshow(x[..., x.shape[2] // 2-100].get())
-            plt.pause(.0001)
+            plt.imshow(x[..., x.shape[2] // 2 - 100].get())
+            plt.pause(0.0001)
 
-            plt.figure('callbackf3')
+            plt.figure("callbackf3")
             plt.cla()
-            plt.imshow(x[..., x.shape[2] // 2+100].get())
-            plt.pause(.0001)
+            plt.imshow(x[..., x.shape[2] // 2 + 100].get())
+            plt.pause(0.0001)
 
     reconstructor = _reco(scan.projs_dir)
 
@@ -96,20 +101,35 @@ def reconstruct(
 
         if timeframes is not None:
             if not np.all([s in scan_timeframes for s in timeframes]):
-                raise ValueError("One or more timeframes are not in the set of"
-                                 " the scan's defined timeframes.")
+                raise ValueError(
+                    "One or more timeframes are not in the set of"
+                    " the scan's defined timeframes."
+                )
         else:
             timeframes = scan_timeframes
 
-        sino = _reconstruct_dynamic(reconstructor, scan, timeframes=timeframes, **kwargs)
+        sino = _reconstruct_dynamic(
+            reconstructor, scan, timeframes=timeframes, **kwargs
+        )
         # per-frame reconstruction:
         for t, sino_t in zip(timeframes, sino):
-            _inner_reco(scan, reconstructor, sino_t, scan.geometry, voxels_x, iters,
-                        callbackf=_callbackf, t=t, save=save, locking=locking)
+            _inner_reco(
+                scan,
+                reconstructor,
+                sino_t,
+                scan.geometry,
+                voxels_x,
+                iters,
+                callbackf=_callbackf,
+                t=t,
+                save=save,
+                locking=locking,
+            )
         reconstructor.clear()
     elif isinstance(scan, StaticScan):
         projs, geoms = _reconstruct_static(
-            reconstructor, scan, ref, plot=plot, **kwargs)
+            reconstructor, scan, ref, plot=plot, **kwargs
+        )
         # vol_id, vol_geom = reco.backward(
         #     proj_id,
         #     proj_geom,
@@ -120,21 +140,24 @@ def reconstruct(
         #     max_constraint=1.,
         #     callback=callbackf)
         # x = reco.volume(vol_id)
-        _inner_reco(scan, reconstructor, projs, geoms, voxels_x, iters,
-                    callbackf=_callbackf, locking=locking,
-                    save=save)
+        _inner_reco(
+            scan,
+            reconstructor,
+            projs,
+            geoms,
+            voxels_x,
+            iters,
+            callbackf=_callbackf,
+            locking=locking,
+            save=save,
+        )
     else:
         raise ValueError()
 
     reconstructor.clear()
 
 
-def _reconstruct_dynamic(
-    reco,
-    scan: Scan,
-    timeframes=None,
-    normalization=None
-):
+def _reconstruct_dynamic(reco, scan: Scan, timeframes=None, normalization=None):
     """
 
     Parameters
@@ -145,10 +168,12 @@ def _reconstruct_dynamic(
     ref_projs = []
     ref_path = None
     ref_lower_density = None
-    ref_mode = 'static'
+    ref_mode = "static"
     if ref is not None:
         if issubclass(type(scan), FluidizedBedScan):
-            assert not ref.is_rotational, "Scan is fluidized bed, but reference is rotational?"
+            assert (
+                not ref.is_rotational
+            ), "Scan is fluidized bed, but reference is rotational?"
         else:
             assert ref.is_rotational, "Scan is dynamic, but reference is static?"
 
@@ -164,7 +189,8 @@ def _reconstruct_dynamic(
         ref_normalization_path = normalization.projs_dir
         for a in angles:
             ref_normalization_projs.append(
-                a - scan.proj_start + normalization.proj_start)
+                a - scan.proj_start + normalization.proj_start
+            )
 
     sino = reco.load_sinogram(
         t_range=timeframes,
@@ -177,8 +203,8 @@ def _reconstruct_dynamic(
         ref_normalization_projs=ref_normalization_projs,
         # darks_ran=range(10),
         # darks_path=scan.darks_dir,
-        ref_lower_density=ref_lower_density)
-
+        ref_lower_density=ref_lower_density,
+    )
     return sino
 
 
@@ -200,18 +226,20 @@ def _reconstruct_static(
     if angles is None:
         angles = scan_angles
     elif not np.all([a in scan_angles for a in angles]):
-        raise ValueError(f"One or more unknown projection angles. {scan}"
-                         f" has angles defined for"
-                         f" {scan.proj_start}-{scan.proj_end}.")
+        raise ValueError(
+            f"One or more unknown projection angles. {scan}"
+            f" has angles defined for"
+            f" {scan.proj_start}-{scan.proj_end}."
+        )
 
     ref_projs = []
     ref_path = None
     ref_lower_density = None
-    ref_mode = 'reco'
+    ref_mode = "reco"
     if ref is not None:
         ref_path = ref.projs_dir
         ref_lower_density = not ref.is_full
-        ref_mode = 'reco' if ref.is_rotational else 'static'
+        ref_mode = "reco" if ref.is_rotational else "static"
         for a in angles:
             ref_projs.append(a - scan.proj_start + ref.proj_start)
 
@@ -223,8 +251,8 @@ def _reconstruct_static(
         ref_normalization_path = normalization.projs_dir
         for a in angles:
             ref_normalization_projs.append(
-                a - scan.proj_start + normalization.proj_start)
-
+                a - scan.proj_start + normalization.proj_start
+            )
     darks_ran = None
     darks_path = None
     if scan.darks is not None:
@@ -243,7 +271,8 @@ def _reconstruct_static(
             darks_ran=darks_ran,
             ref_lower_density=ref_lower_density,
             ref_normalization_path=ref_normalization_path,
-            ref_normalization_projs=ref_normalization_projs)
+            ref_normalization_projs=ref_normalization_projs,
+        )
         sino = np.squeeze(sino, axis=0)
         # sino = np.transpose(sino, [1, 0, 2])
         sinos.append(sino)
@@ -256,27 +285,33 @@ def _reconstruct_static(
 
     scan._geometry_rotation_offset = np.pi / 6
     geom_flat = np.array(
-        [g
-         for c, gs in scan.geometry.items() if c in cameras
-         for i, g in enumerate(gs, scan.proj_start) if i in angles])
-
+        [
+            g
+            for c, gs in scan.geometry.items()
+            if c in cameras
+            for i, g in enumerate(gs, scan.proj_start)
+            if i in angles
+        ]
+    )
     return sino_flat, geom_flat
 
 
-def _inner_reco(scan: Scan,
-                reco: Reconstruction,
-                sino,
-                geoms,
-                voxels_x,
-                iters,
-                t=None,
-                callbackf=None,
-                locking=False,
-                save=False,
-                save_tiff=False,
-                save_mat=False,
-                min_constraint=0.,
-                max_constraint=1.):
+def _inner_reco(
+    scan: Scan,
+    reco: Reconstruction,
+    sino,
+    geoms,
+    voxels_x,
+    iters,
+    t=None,
+    callbackf=None,
+    locking=False,
+    save=False,
+    save_tiff=False,
+    save_mat=False,
+    min_constraint=0.0,
+    max_constraint=1.0,
+):
     def _fname(ext, t=None):
         """Filename for reconstruction"""
 
@@ -285,13 +320,13 @@ def _inner_reco(scan: Scan,
             return os.path.join(
                 recodir,
                 scan.name,
-                f'size_{voxels_x}_algo_{algo}_iters_{iters}',
-                save_name)
+                f"size_{voxels_x}_algo_{algo}_iters_{iters}",
+                save_name,
+            )
         else:
             return os.path.join(
-                recodir,
-                scan.name,
-                f'size_{voxels_x}_algo_{algo}_iters_{iters}.{ext}')
+                recodir, scan.name, f"size_{voxels_x}_algo_{algo}_iters_{iters}.{ext}"
+            )
 
     # sino[0, ...] = np.mean(sino, axis=0)  # hacky averaging projs
 
@@ -310,13 +345,13 @@ def _inner_reco(scan: Scan,
     # for i, s in enumerate(sino[0]):
     #    sino[0, i] = denoise_wavelet(s, 1e-1, rescale_sigma=True)
 
-    filename = _fname('npy', t)
+    filename = _fname("npy", t)
     if os.path.exists(filename):
         print(f"File {filename} exists, continuing.")
         return
 
     if locking:
-        lockfile = _fname('lock', t)
+        lockfile = _fname("lock", t)
         if os.path.exists(lockfile):
             print(f"Lockfile {lockfile} exists, continuing.")
             return
@@ -327,8 +362,7 @@ def _inner_reco(scan: Scan,
     try:
         print(f"Starting {filename}...")
 
-        proj_id, proj_geom = reco.sino_gpu_and_proj_geom(
-            sino, geoms)
+        proj_id, proj_geom = reco.sino_gpu_and_proj_geom(sino, geoms)
 
         vol_id, vol_geom = reco.backward(
             proj_id,
@@ -339,7 +373,8 @@ def _inner_reco(scan: Scan,
             min_constraint=min_constraint,
             max_constraint=max_constraint,
             col_mask=True,
-            callback=callbackf)
+            callback=callbackf,
+        )
         x = reco.volume(vol_id)
 
         infodict = {
@@ -349,7 +384,8 @@ def _inner_reco(scan: Scan,
             "geometry": proj_geom,
             "algorithm": algo,
             "nr_iters": iters,
-            "vol_params": reco.vol_params(voxels_x)}
+            "vol_params": reco.vol_params(voxels_x),
+        }
 
         print(f"Saving {filename}...")
         if save:
@@ -357,65 +393,83 @@ def _inner_reco(scan: Scan,
             np.save(filename, infodict, allow_pickle=True)
 
         if save_tiff:
-            tifffile.imsave(_fname('tiff', t), x, x.shape)
+            tifffile.imsave(_fname("tiff", t), x, x.shape)
 
         if save_mat:
             from scipy.io import savemat
-            filename = _fname('mat', t)
+
+            filename = _fname("mat", t)
             savemat(filename, infodict)
     finally:
         if locking:
             try:
                 print(f"Lockfile {_fname('lock', t)} could not be unlinked.")
-                Path(_fname('lock', t)).unlink()
+                Path(_fname("lock", t)).unlink()
             except:
                 pass
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Reconstruction")
 
-    parser.add_argument("--scan", type=str,
-                        help="Name of the Scan to run."
-                             " Must be available in settings.py. Runs"
-                             " all SCANS from settings.py if not provided.",
-                        default='all')
-    parser.add_argument("--ref-name", type=str,
-                        help="Name of the reference scan."
-                             " Must be available in settings.py. If not "
-                             " given, will use `scan.references[0]`.",
-                        default=None)
-    parser.add_argument("--recodir", type=str,
-                        help="directory to store reconstructions",
-                        default='./')
-    parser.add_argument("--algo", type=str,
-                        help="Algorithm to use (sirt, fdk, nesterov)",
-                        default=None)
-    parser.add_argument("--iters", type=int,
-                        help="Number of iterations for iterative algorithms.",
-                        default=None)
-    parser.add_argument("--backend", type=str,
-                        help="Backend to use (astra, rayve)",
-                        default='rayve')
-    parser.add_argument("--cam", type=int,
-                        help="Reconstructs with a single camera.",
-                        default=None)
-    parser.add_argument("--time", type=int,
-                        help="Starting timeframe from a dynamic "
-                             " scan.",
-                        default=None)
-    parser.add_argument("--time-end", type=int,
-                        help="Timeframe to end, in a dynamic scan.",
-                        default=None)
-    parser.add_argument("--angle", type=int,
-                        help="Reconstruct a single angle from a rotational "
-                             " scan.",
-                        default=None)
-    parser.add_argument("--plot", "--p", action='store_true', default=False)
-    parser.add_argument("--save", "--s", action='store_true', default=False)
-    parser.add_argument("--save-tiff", action='store_true', default=False)
-    parser.add_argument("--save-mat", action='store_true', default=False)
-    parser.add_argument("--locking", action='store_true', default=False)
+    parser.add_argument(
+        "--scan",
+        type=str,
+        help="Name of the Scan to run."
+        " Must be available in settings.py. Runs"
+        " all SCANS from settings.py if not provided.",
+        default="all",
+    )
+    parser.add_argument(
+        "--ref-name",
+        type=str,
+        help="Name of the reference scan."
+        " Must be available in settings.py. If not "
+        " given, will use `scan.references[0]`.",
+        default=None,
+    )
+    parser.add_argument(
+        "--recodir", type=str, help="directory to store reconstructions", default="./"
+    )
+    parser.add_argument(
+        "--algo", type=str, help="Algorithm to use (sirt, fdk, nesterov)", default=None
+    )
+    parser.add_argument(
+        "--iters",
+        type=int,
+        help="Number of iterations for iterative algorithms.",
+        default=None,
+    )
+    parser.add_argument(
+        "--backend", type=str, help="Backend to use (astra, rayve)", default="rayve"
+    )
+    parser.add_argument(
+        "--cam", type=int, help="Reconstructs with a single camera.", default=None
+    )
+    parser.add_argument(
+        "--time",
+        type=int,
+        help="Starting timeframe from a dynamic " " scan.",
+        default=None,
+    )
+    parser.add_argument(
+        "--time-end",
+        type=int,
+        help="Timeframe to end, in a dynamic scan.",
+        default=None,
+    )
+    parser.add_argument(
+        "--angle",
+        type=int,
+        help="Reconstruct a single angle from a rotational " " scan.",
+        default=None,
+    )
+
+    parser.add_argument("--plot", "--p", action="store_true", default=False)
+    parser.add_argument("--save", "--s", action="store_true", default=False)
+    parser.add_argument("--save-tiff", action="store_true", default=False)
+    parser.add_argument("--save-mat", action="store_true", default=False)
+    parser.add_argument("--locking", action="store_true", default=False)
 
     args = parser.parse_args()
     name = args.scan
@@ -432,20 +486,20 @@ if __name__ == '__main__':
     locking = args.locking
 
     if plot:
-        plt.rcParams.update({'figure.raise_window': False})
+        plt.rcParams.update({"figure.raise_window": False})
 
-    if name != 'all':
+    if name != "all":
         scans = sett.get_scans(name)
         if len(scans) == 0:
             raise ValueError(f"Scan {name} not found.")
     else:
         scans = sett.SCANS
 
-    kwargs = {'plot': plot, 'locking': locking, 'save': save}
+    kwargs = {"plot": plot, "locking": locking, "save": save}
     if algo is not None:
-        kwargs['algo'] = algo
+        kwargs["algo"] = algo
     if iters is not None:
-        kwargs['iters'] = iters
+        kwargs["iters"] = iters
 
     times = []
     if time is not None:
@@ -454,12 +508,12 @@ if __name__ == '__main__':
 
         for t in range(time, time_end):
             times.append(t)
-    kwargs['timeframes'] = times
+    kwargs["timeframes"] = times
 
     if cam is not None:
-        kwargs['cameras'] = [cam]
+        kwargs["cameras"] = [cam]
     if angle is not None:
-        kwargs['angles'] = [angle]
+        kwargs["angles"] = [angle]
 
     for scan in scans:
         try:
@@ -470,14 +524,15 @@ if __name__ == '__main__':
                     raise ValueError(
                         f"Zero, or multiple references defined for scan {scan.name}. Either"
                         f" define a reference in settings.py or provide with which reference"
-                        f" to reconstruct.")
+                        f" to reconstruct."
+                    )
             else:
                 refs = sett.get_scans(refname)
                 assert len(refs) == 1
                 ref = refs[0]
 
             if scan.normalization is not None:
-                kwargs['normalization'] = scan.normalization
+                kwargs["normalization"] = scan.normalization
 
             reconstruct(scan, recodir, ref, **kwargs)
         except ValueError:
