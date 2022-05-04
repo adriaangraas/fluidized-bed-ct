@@ -1,7 +1,7 @@
 import argparse
 import itertools
 from pathlib import Path
-
+from typing import Tuple, Callable
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -209,11 +209,11 @@ def _reconstruct_dynamic(reco, scan: Scan, timeframes=None, normalization=None):
 
 
 def _reconstruct_static(
-    reco,
+    reco: Reconstruction,
     scan: StaticScan,
     ref: Scan = None,
     plot: bool = False,
-    cameras=None,
+    cameras: Tuple = None,
     angles=None,
     normalization=None,
 ):
@@ -304,8 +304,8 @@ def _inner_reco(
     voxels_x,
     iters,
     t=None,
-    callbackf=None,
-    locking=False,
+    callbackf: Callable = None,
+    locking: bool = False,
     save=False,
     save_tiff=False,
     save_mat=False,
