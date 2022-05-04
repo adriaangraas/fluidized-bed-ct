@@ -1,19 +1,18 @@
 import argparse
-import itertools
+import os
 from pathlib import Path
 from typing import Tuple, Callable
 
 import matplotlib.pyplot as plt
 import numpy as np
 import tifffile
-import os
 
-from fbrct import loader, reco, Scan, DynamicScan, StaticScan, FluidizedBedScan
 import scripts.settings as sett
+from fbrct import loader, reco, Scan, DynamicScan, StaticScan, FluidizedBedScan
 from fbrct.reco import Reconstruction
 
 
-def _reco(projs_dir):
+def _reco(projs_dir: str):
     """Generate a reconstruction object."""
 
     detector = {
@@ -449,7 +448,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--time",
         type=int,
-        help="Starting timeframe from a dynamic " " scan.",
+        help="Starting timeframe from a dynamic scan.",
+        default=None,
+    )
+    parser.add_argument(
+        "--time-start",
+        type=int,
+        help="Starting timeframe from a dynamic scan.",
         default=None,
     )
     parser.add_argument(
@@ -478,6 +483,7 @@ if __name__ == "__main__":
     iters = args.iters
     recodir = args.recodir
     time = args.time
+    time_start = args.time_start
     time_end = args.time_end
     angle = args.angle
     cam = args.cam
@@ -503,11 +509,16 @@ if __name__ == "__main__":
 
     times = []
     if time is not None:
-        if time_end is None:
-            time_end = time + 1
+        assert time_start is None and time_end is None
+        time_end = time + 1
 
         for t in range(time, time_end):
             times.append(t)
+    if time_start is not None:
+        assert time is None and time_end is not None
+        for t in range(time_start, time_end):
+            times.append(t)
+
     kwargs["timeframes"] = times
 
     if cam is not None:
