@@ -1,5 +1,12 @@
-from fbrct.scan import StaticScan, Phantom, FluidizedBedScan, TraverseScan
 from pathlib import Path
+
+from fbrct.scan import (
+    StaticScan,
+    Phantom,
+    FluidizedBedScan,
+    TraverseScan,
+    MovingPhantom,
+)
 
 SOURCE_RADIUS = 94.5
 DETECTOR_RADIUS = 27.0
@@ -13,23 +20,26 @@ DETECTOR_WIDTH = DETECTOR_WIDTH_SPEC / DETECTOR_COLS_SPEC * DETECTOR_COLS  # cm
 
 DETECTOR_PIXEL_WIDTH = DETECTOR_WIDTH / DETECTOR_COLS
 DETECTOR_PIXEL_HEIGHT = DETECTOR_HEIGHT / DETECTOR_ROWS
-APPROX_VOXEL_WIDTH = DETECTOR_PIXEL_WIDTH / (
-    SOURCE_RADIUS + DETECTOR_RADIUS) * SOURCE_RADIUS
-APPROX_VOXEL_HEIGHT = DETECTOR_PIXEL_HEIGHT / (
-    SOURCE_RADIUS + DETECTOR_RADIUS) * SOURCE_RADIUS
+APPROX_VOXEL_WIDTH = (
+    DETECTOR_PIXEL_WIDTH / (SOURCE_RADIUS + DETECTOR_RADIUS) * SOURCE_RADIUS
+)
+APPROX_VOXEL_HEIGHT = (
+    DETECTOR_PIXEL_HEIGHT / (SOURCE_RADIUS + DETECTOR_RADIUS) * SOURCE_RADIUS
+)
 
-detector = {'rows': DETECTOR_ROWS,
-            'cols': DETECTOR_COLS,
-            'pixel_width': DETECTOR_PIXEL_WIDTH,
-            'pixel_height': DETECTOR_PIXEL_HEIGHT}
+detector = {
+    "rows": DETECTOR_ROWS,
+    "cols": DETECTOR_COLS,
+    "pixel_width": DETECTOR_PIXEL_WIDTH,
+    "pixel_height": DETECTOR_PIXEL_HEIGHT,
+}
 
-calib_dir = str(Path(__file__).parent / 'calibration')
-
+calib_dir = str(Path(__file__).parent / "calibration")
 data_dir_19 = "/export/scratch2/adriaan/mnt/scratch2/evert/data/2021-08-19"
 data_dir_20 = "/export/scratch2/adriaan/mnt/scratch2/evert/data/2021-08-20"
 data_dir_23 = "/export/scratch2/adriaan/mnt/scratch3/evert/data/2021-08-23"
 data_dir_24 = "/export/scratch2/adriaan/mnt/scratch3/evert/data/2021-08-24"
-calib = f'{calib_dir}/geom_pre_proc_Calibration_needle_phantom_30degsec_table474mm_calibrated_on_26aug2021.npy'
+calib = f"{calib_dir}/geom_pre_proc_Calibration_needle_phantom_30degsec_table474mm_calibrated_on_26aug2021.npy"
 
 SCANS = []
 ball_20mm = Phantom(2, None)
@@ -43,6 +53,7 @@ def get_scans(name: str) -> list:
             selected.append(s)
 
     return selected
+
 
 ###############################################################################
 # Modifications for testing on Scan3
@@ -319,19 +330,19 @@ def get_scans(name: str) -> list:
 ###############################################################################
 # Scans on 19 aug 2021
 ###############################################################################
-ref_dir = f'/export/scratch2/adriaan/evert/data/2021-08-19/pre_proc_Empty_30degsec',
-ref_ran = range(1, 100),
+ref_dir = (f"/export/scratch2/adriaan/evert/data/2021-08-19/pre_proc_Empty_30degsec",)
+ref_ran = (range(1, 100),)
 
 _19_empty_rotating = StaticScan(
     "2021-08-19_pre_proc_Empty_30degsec",
     detector,
-    f'{data_dir_19}/pre_proc_Empty_30degsec',
+    f"{data_dir_19}/pre_proc_Empty_30degsec",
     proj_start=1,
     proj_end=100,
     is_full=False,
     is_rotational=True,
-    geometry=f'{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy',
-    geometry_scaling_factor=1. / 1.0106333,
+    geometry=f"{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy",
+    geometry_scaling_factor=1.0 / 1.0106333,
 )
 SCANS.append(_19_empty_rotating)
 
@@ -377,29 +388,25 @@ SCANS.append(_19_empty_rotating)
 #
 
 size_of_marble = 2.5  # cm
-for mmsec, ran in [
-    (62, range(100, 200)),
-    (125, range(40, 100))]:
-    for pos in ['center', 'wall_det2', 'wall_source2']:
-        for scaling in ['', '_noscaling']:
+for mmsec, ran in [(62, range(100, 200)), (125, range(40, 100))]:
+    for pos in ["center", "wall_det2", "wall_source2"]:
+        for scaling in ["", "_noscaling"]:
             _scan = TraverseScan(
-                f'Small_marble_{pos}_{mmsec}mmsec_65Hz{scaling}',
+                f"Small_marble_{pos}_{mmsec}mmsec_65Hz{scaling}",
                 detector,
-                f'{data_dir_20}/pre_proc_Small_marble_{pos}_{mmsec}mmsec_65Hz',
+                f"{data_dir_20}/pre_proc_Small_marble_{pos}_{mmsec}mmsec_65Hz",
                 motor_velocity=mmsec,
                 # darks_dir='/home/adriaan/ownCloud3/pre_proc_Dark_frames',
                 # geometry='resources/multicam_rot0_pre_proc_Calibration_needle_phantom_30degsec_table474mm_calibrated_on_26aug2021.npy',
                 # geometry=calib,
-                geometry=f'{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy',
-                geometry_scaling_factor=1. / 1.0106333 if scaling != '' else None,
+                geometry=f"{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy",
+                geometry_scaling_factor=1.0 / 1.0106333 if scaling != "" else None,
                 framerate=65,
                 timeframes=range(ran.start - 10, ran.stop + 10),
                 references=[_19_empty_rotating]
                 # col_inner_diameter=5.0,
             )
-            _scan.add_phantom(
-                MovingPhantom(size_of_marble,
-                              interesting_time=ran))
+            _scan.add_phantom(MovingPhantom(size_of_marble, interesting_time=ran))
             SCANS.append(_scan)
 
 # size_of_marble = 2.5  # cm
@@ -425,26 +432,26 @@ for mmsec, ran in [
 _23_full_rotating = StaticScan(
     "2021-08-23_pre_proc_Full_30degsec",
     detector,
-    f'{data_dir_23}/pre_proc_Full_30degsec',
+    f"{data_dir_23}/pre_proc_Full_30degsec",
     proj_start=1026,
     proj_end=1800,
     is_full=True,
     is_rotational=False,
-    geometry=f'{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy',
-    geometry_scaling_factor=1. / 1.0106333,
+    geometry=f"{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy",
+    geometry_scaling_factor=1.0 / 1.0106333,
 )
 SCANS.append(_23_full_rotating)
 
-for size in ['10mm', '14mm', '23mm']:
+for size in ["10mm", "14mm", "23mm"]:
     _scan = StaticScan(
         f"2021-08-23_3x{size}_foamballs_vertical_refempty",
         detector,
-        f'{data_dir_23}/pre_proc_3x{size}_foamballs_vertical',
+        f"{data_dir_23}/pre_proc_3x{size}_foamballs_vertical",
         proj_start=1025,
         proj_end=1801,
         # darks_dir=f'{data_dir}/pre_proc_Darkfield',
-        geometry=f'{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy',
-        references=[_23_full_rotating]
+        geometry=f"{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy",
+        references=[_23_full_rotating],
     )
     SCANS.append(_scan)
 
@@ -454,14 +461,14 @@ for lmin in [19, 20, 22, 25]:
     _scan = FluidizedBedScan(
         f"2021-08-23_{lmin}Lmin_reffull",
         detector,
-        f'{data_dir_23}/pre_proc_{lmin}Lmin',
+        f"{data_dir_23}/pre_proc_{lmin}Lmin",
         liter_per_min=lmin,
         ref_ran=range(0, 10),
         # darks_dir=f'{data_dir}/pre_proc_Darkfield',
-        geometry=f'{calib_dir}/geom_pre_proc_Calibration_needle_phantom_30degsec_table474mm_calibrated_on_26aug2021.npy',
+        geometry=f"{calib_dir}/geom_pre_proc_Calibration_needle_phantom_30degsec_table474mm_calibrated_on_26aug2021.npy",
         cameras=(1, 2, 3),
         col_inner_diameter=5.0,
-        references=[_23_full_rotating]
+        references=[_23_full_rotating],
     )
     SCANS.append(_scan)
 
@@ -471,7 +478,7 @@ for lmin in [19, 20, 22, 25]:
 _24_darks = StaticScan(
     "2021-08-24_pre_proc_Dark",
     detector,
-    f'{data_dir_24}/pre_proc_Dark',
+    f"{data_dir_24}/pre_proc_Dark",
     proj_start=1,
     proj_end=1000,
     is_full=False,
@@ -482,81 +489,81 @@ SCANS.append(_24_darks)
 _24_empty_rotating = StaticScan(
     "2021-08-24_pre_proc_Empty_30degsec_nonrotating",
     detector,
-    f'{data_dir_24}/pre_proc_Empty_30degsec',
+    f"{data_dir_24}/pre_proc_Empty_30degsec",
     proj_start=1026,
     proj_end=1800,
     is_full=False,
     is_rotational=True,
-    geometry=f'{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy',
-    geometry_scaling_factor=1. / 1.0106333,
+    geometry=f"{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy",
+    geometry_scaling_factor=1.0 / 1.0106333,
 )
 SCANS.append(_24_empty_rotating)
 
 _24_full_rotating = StaticScan(
     "2021-08-24_pre_proc_Full_30degsec_rotating",
     detector,
-    f'{data_dir_24}/pre_proc_Full_30degsec',
+    f"{data_dir_24}/pre_proc_Full_30degsec",
     proj_start=1026,
     proj_end=1800,
     is_full=True,
     is_rotational=True,
-    geometry=f'{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy',
-    geometry_scaling_factor=1. / 1.0106333,
+    geometry=f"{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy",
+    geometry_scaling_factor=1.0 / 1.0106333,
 )
 SCANS.append(_24_full_rotating)
 
 _24_empty_nonrotating = StaticScan(
     "2021-08-24_pre_proc_Empty_30degsec_nonrotating",
     detector,
-    f'{data_dir_24}/pre_proc_Empty_30degsec',
+    f"{data_dir_24}/pre_proc_Empty_30degsec",
     proj_start=1,
     proj_end=1000,
     is_full=False,
     is_rotational=False,
-    geometry=f'{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy',
-    geometry_scaling_factor=1. / 1.0106333,
+    geometry=f"{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy",
+    geometry_scaling_factor=1.0 / 1.0106333,
 )
 SCANS.append(_24_empty_nonrotating)
 
-for nr, pos in [(2, 'horizontal'), (3, 'vertical_wall')]:
+for nr, pos in [(2, "horizontal"), (3, "vertical_wall")]:
     for size in [10, 14, 23]:
         _scan = StaticScan(
             f"2021-08-24_{nr}x{size}mm_foamballs_{pos}_refempty",
             detector,
-            f'{data_dir_24}/pre_proc_{nr}x{size}mm_foamballs_{pos}',
+            f"{data_dir_24}/pre_proc_{nr}x{size}mm_foamballs_{pos}",
             proj_start=1025,
             proj_end=1799,
             # darks_dir='/home/adriaan/data/evert/2021-08-23/pre_proc_Darkfield',
-            geometry=f'{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy',
+            geometry=f"{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy",
             cameras=(1, 2, 3),
-            references=[_24_empty_rotating]
+            references=[_24_empty_rotating],
         )
         # SCANS.append(scan)
 
 _scan = StaticScan(
     "2021-08-24_10mm_14mm_23mm_horizontal_refempty",
     detector,
-    f'{data_dir_24}/pre_proc_10mm_14mm_23mm_foamballs_horizontal',
+    f"{data_dir_24}/pre_proc_10mm_14mm_23mm_foamballs_horizontal",
     proj_start=1025,
     proj_end=1799,
     # darks_dir=f'{data_dir}/pre_proc_Dark',
-    geometry='resources/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy',
-    references=[_24_empty_rotating]
+    geometry="resources/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy",
+    references=[_24_empty_rotating],
 )
 # SCANS.append(scan)
 
 _scan = StaticScan(
     "2021-08-24_10mm_23mm_horizontal",
     detector,
-    f'{data_dir_24}/pre_proc_10mm_23mm_foamballs_horizontal',
+    f"{data_dir_24}/pre_proc_10mm_23mm_foamballs_horizontal",
     proj_start=1025,
     proj_end=1799,
     # darks_dir=f'{data_dir}/pre_proc_Dark',
-    geometry=f'{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy',
-    geometry_scaling_factor=1. / 1.0106333,
+    geometry=f"{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy",
+    geometry_scaling_factor=1.0 / 1.0106333,
     references=[_24_full_rotating],
     darks=_24_darks,
-    normalization=_24_empty_rotating
+    normalization=_24_empty_rotating,
 )
 SCANS.append(_scan)
 
