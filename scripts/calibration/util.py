@@ -7,8 +7,9 @@ from cate.annotate import Annotator
 from cate.astra import geom2astravec
 from cate.param import ScalarParameter, VectorParameter
 from cate.xray import markers_from_leastsquares_intersection, XrayOptimizationProblem
-from fbrct.reco import Reconstruction
+
 from fbrct.loader import load, preprocess
+from fbrct.reco import Reconstruction
 
 
 def _load_median_projs(path, t, fulls_path=None):
@@ -20,10 +21,9 @@ def _load_median_projs(path, t, fulls_path=None):
         ims = Imeas.astype(np.float32)
         return ims[0]
     else:
-        p = load_referenced_projs_from_fulls(path,
-                                             fulls_path,
-                                             t_range=range(t, t + 1),
-                                             reference_method='median')
+        p = load_referenced_projs_from_fulls(
+            path, fulls_path, t_range=range(t, t + 1), reference_method="median"
+        )
         return np.median(p, axis=0)
 
 
@@ -40,7 +40,8 @@ def annotated_data(
     cameras: Sequence = (1, 2, 3),
     open_annotator: bool = False,
     vmin=None,
-    vmax=None) -> list:
+    vmax=None,
+) -> list:
     """(Re)store marker projection coordinates from annotations
 
     :return list
@@ -52,11 +53,9 @@ def annotated_data(
     for cam in cameras:
         for t in times:
             # open a EntityLocations class for this file, in the
-            points = entity_locations_class(f"resources/{fname}_cam{cam}.npy",
-                                            t)
+            points = entity_locations_class(f"resources/{fname}_cam{cam}.npy", t)
             if open_annotator:
-                projs = _load_projs(projs_path, t_range=range(t, t + 1),
-                                    camera=cam)
+                projs = _load_projs(projs_path, t_range=range(t, t + 1), camera=cam)
                 projs = np.squeeze(projs)
                 Annotator(points, projs, block=True, vmin=vmin, vmax=vmax)
 
@@ -66,8 +65,9 @@ def annotated_data(
     return data
 
 
-def triangle_geom(src_rad, det_rad, rotation=False, shift=False,
-                  fix_first_det=True, weight_decay=None):
+def triangle_geom(
+    src_rad, det_rad, rotation=False, shift=False, fix_first_det=True, weight_decay=None
+):
     geoms = []
     for i, src_a in enumerate([0, 2 / 3 * np.pi, 4 / 3 * np.pi]):
         det_a = src_a + np.pi  # opposing
@@ -98,18 +98,17 @@ def triangle_geom(src_rad, det_rad, rotation=False, shift=False,
         # transform the whole geometry by a global rotation, this is the
         # same as if the phantom rotated
 
-        rotation_roll = ScalarParameter(0.)
-        rotation_pitch = ScalarParameter(0.)
-        rotation_yaw = ScalarParameter(0.)
+        rotation_roll = ScalarParameter(0.0)
+        rotation_pitch = ScalarParameter(0.0)
+        rotation_yaw = ScalarParameter(0.0)
 
         for i in range(len(geoms)):
-            geoms[i] = xray.transform(geoms[i],
-                                      rotation_roll,
-                                      rotation_pitch,
-                                      rotation_yaw)
+            geoms[i] = xray.transform(
+                geoms[i], rotation_roll, rotation_pitch, rotation_yaw
+            )
 
     if shift:
-        shift_param = VectorParameter(np.array([0., 0., 0.]))
+        shift_param = VectorParameter(np.array([0.0, 0.0, 0.0]))
 
         for i in range(len(geoms)):
             geoms[i] = xray.shift(geoms[i], shift_param)
@@ -118,11 +117,8 @@ def triangle_geom(src_rad, det_rad, rotation=False, shift=False,
 
 
 def astra_reco_rotation_singlecamera(
-    reco: Reconstruction,
-    data,
-    geoms,
-    algo='FDK',
-    voxels_x=400, iters=200):
+    reco: Reconstruction, data, geoms, algo="FDK", voxels_x=400, iters=200
+):
     # detector_mid = DETECTOR_ROWS // 2
     # offset = DETECTOR_ROWS // 2 - 0
     # sinogram = p[0, :, recon_height_range,
@@ -133,17 +129,13 @@ def astra_reco_rotation_singlecamera(
     # recon_width_length = int(len(recon_width_range))
     vectors = np.array([geom2astravec(g, reco.detector) for g in geoms])
     proj_id, proj_geom = reco.sino_gpu_and_proj_geom(data, vectors)
-    vol_id, vol_geom = reco.backward(proj_id, proj_geom, algo=algo,
-                                     voxels_x=voxels_x, iters=iters)
+    vol_id, vol_geom = reco.backward(
+        proj_id, proj_geom, algo=algo, voxels_x=voxels_x, iters=iters
+    )
     return vol_id, vol_geom
 
 
-def astra_reco(
-    reco: Reconstruction,
-    projs,
-    geoms,
-    algo='SIRT',
-    voxels_x=400):
+def astra_reco(reco: Reconstruction, projs, geoms, algo="SIRT", voxels_x=400):
     """
     Reconstruction without rotation table:
      - 3 sources
@@ -162,16 +154,13 @@ def astra_reco(
 
     vectors = np.array([geom2astravec(g, reco.detector) for g in geoms])
     proj_id, proj_geom = reco.sino_gpu_and_proj_geom(projs, vectors)
-    vol_id, vol_geom = reco.backward(proj_id, proj_geom, algo=algo,
-                                     voxels_x=voxels_x)
+    vol_id, vol_geom = reco.backward(proj_id, proj_geom, algo=algo, voxels_x=voxels_x)
     return vol_id, vol_geom
 
 
 def astra_project(reco, vol_id, vol_geom, geoms):
-    vectors = np.array([geom2astravec(g, reco.detector) for g in geoms])
-    sino_id, proj_geom = reco.sino_gpu_and_proj_geom(
-        0.,  # zero-sinogram
-        vectors)
+    vectors = np.array([geom2astravec(g, reco._detector) for g in geoms])
+    sino_id, proj_geom = reco.sino_gpu_and_proj_geom(0.0, vectors)  # zero-sinogram
 
     proj_id = reco.forward(
         volume_id=vol_id,
@@ -190,8 +179,9 @@ def astra_residual(reco, data, vol_id, vol_geom, geoms):
     """
     reproj = astra_project(reco, vol_id, vol_geom, geoms)
 
-    assert reproj.shape == data.shape, f"reproj shape is {reproj.shape} while" \
-                                       f" data.shape is {data.shape}"
+    assert reproj.shape == data.shape, (
+        f"reproj shape is {reproj.shape} while" f" data.shape is {data.shape}"
+    )
     return data - reproj
 
 
@@ -210,12 +200,12 @@ def plot_projections(res, vmin=None, vmax=None, title=None):
             im = axs[i].imshow(res[:, i], vmin=vmin, vmax=vmax)
             fig.colorbar(im, ax=axs[i])
 
-    plt.pause(.1)
+    plt.pause(0.1)
 
 
 def prep_projs(projs, crop_cols):
     def _crop(projs, crop_cols):
-        return projs[:, :, crop_cols // 2:int(projs.shape[2] - crop_cols // 2)]
+        return projs[:, :, crop_cols // 2 : int(projs.shape[2] - crop_cols // 2)]
 
     # projs *= -1
     # projs += 9.5
@@ -231,9 +221,8 @@ def prep_projs(projs, crop_cols):
 
 
 def run_initial_marker_optimization(
-    geoms, data, nr_iters: int = 20,
-    max_nfev=10,
-    plot=False, **kwargs):
+    geoms, data, nr_iters: int = 20, max_nfev=10, plot=False, **kwargs
+):
     """Find points of the phantom that we have because of a high-resolution
     prescan.
 
@@ -251,32 +240,31 @@ def run_initial_marker_optimization(
         # Get Least-Square optimal points by analytically backprojection the
         # marker locations, which is a LS intersection of lines.
         markers = markers_from_leastsquares_intersection(
-            geoms, data,
+            geoms,
+            data,
             optimizable=False,
             plot=plot,
         )
 
         # Then find the optimal geoms given the `points` and `data`, in-place.
         problem = XrayOptimizationProblem(
-            markers=markers,
-            geoms=geoms,
-            data=data,
-            use_multiprocessing=False
+            markers=markers, geoms=geoms, data=data, use_multiprocessing=False
         )
 
         from cate.param import params2ndarray
         import scipy.optimize
+
         r = scipy.optimize.least_squares(
             fun=problem,
             x0=params2ndarray(problem.params()),
             bounds=problem.bounds(),
             verbose=2,
             # method=method,
-            tr_solver='exact',
+            tr_solver="exact",
             # loss=loss,
-            jac='3-point',
+            jac="3-point",
             max_nfev=max_nfev,
-            **kwargs
+            **kwargs,
         )
 
         np.set_printoptions(precision=4, suppress=True)
@@ -284,7 +272,7 @@ def run_initial_marker_optimization(
             print("")
             print(f"--- GEOM {i} old:new properties ---")
             print(f"source   : {g1.source} : {g2.source}")
-            print(f"detector : {g1.detector} : {g2.detector}")
+            print(f"detector : {g1._detector} : {g2._detector}")
             print(f"roll     : {g1.roll} : {g2.roll}")
             print(f"pitch    : {g1.pitch} : {g2.pitch}")
             print(f"yaw      : {g1.yaw} : {g2.yaw}")
@@ -292,18 +280,18 @@ def run_initial_marker_optimization(
             g1_un = g1.decorated_geometry.decorated_geometry
             g2_un = g2.decorated_geometry.decorated_geometry
             print(
-                f"source   : {g1_un.source} : {g2_un.source} : {g1_un.source - g2_un.source}")
+                f"source   : {g1_un.source} : {g2_un.source} : {g1_un.source - g2_un.source}"
+            )
             print(
-                f"detector : {g1_un.detector} : {g2_un.detector} : {g1_un.detector - g2_un.detector}")
+                f"detector : {g1_un._detector} : {g2_un._detector} : {g1_un._detector - g2_un._detector}"
+            )
+            print(f"roll     : {g1_un.roll} : {g2_un.roll} : {g1_un.roll - g2_un.roll}")
             print(
-                f"roll     : {g1_un.roll} : {g2_un.roll} : {g1_un.roll - g2_un.roll}")
-            print(
-                f"pitch    : {g1_un.pitch} : {g2_un.pitch} : {g1_un.pitch - g2_un.pitch}")
-            print(
-                f"yaw      : {g1_un.yaw} : {g2_un.yaw} : {g1_un.yaw - g2_un.yaw}")
+                f"pitch    : {g1_un.pitch} : {g2_un.pitch} : {g1_un.pitch - g2_un.pitch}"
+            )
+            print(f"yaw      : {g1_un.yaw} : {g2_un.yaw} : {g1_un.yaw - g2_un.yaw}")
             print(f"--- GEOM {i} old:new parameters ---")
-            for i, (p1, p2) in enumerate(zip(g1.parameters(),
-                                             g2.parameters())):
+            for i, (p1, p2) in enumerate(zip(g1.parameters(), g2.parameters())):
                 print(f"{id(p1)} : {p1.value} : {p2.value}")
 
     # noinspection PyUnboundLocalVariable
