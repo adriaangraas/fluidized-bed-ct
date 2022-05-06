@@ -103,6 +103,7 @@ class Reconstruction:
         darks_ran: range = None,
         ref_normalization_path=None,
         ref_normalization_projs: range = None,
+        detector_rows: range = None,
     ):
         """Loads and preprocesses the sinogram for .
 
@@ -119,6 +120,8 @@ class Reconstruction:
         load_kwargs = {}
         if cameras is not None:
             load_kwargs["cameras"] = cameras
+        if detector_rows is not None:
+            load_kwargs["detector_rows"] = detector_rows
 
         if ref_path is not None:
             p = load(self._path, t_range, **load_kwargs)
