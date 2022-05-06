@@ -5,7 +5,7 @@ from fbrct.calibrate import *
 
 
 def perturb_geoms(geoms):
-    """Perturb geoms to simulate real data. """
+    """Perturb geoms to simulate real data."""
 
     out = []
     for g in geoms:
@@ -14,12 +14,12 @@ def perturb_geoms(geoms):
         # but intrinic coordinates for rpy
         geom = StaticGeometry.fromDetectorVectors(
             source=g.source + 20 * np.array([-0.12, 0.35, 0.11]),
-            detector=g.detector + [-0.45, 0.35, .25],
+            detector=g._detector + [-0.45, 0.35, 0.25],
             u=u,
             v=v,
             roll=g.roll + 1 / 60 * np.pi,
             pitch=g.pitch + 2 / 60 * np.pi,
-            yaw=g.yaw + 3 / 60 * np.pi
+            yaw=g.yaw + 3 / 60 * np.pi,
         )
         out.append(geom)
 
@@ -32,7 +32,7 @@ def perturb_points(points, sigma=0.5):
     out = []
     for i, p in enumerate(points):
         point = copy.deepcopy(p)
-        err = sigma * (np.random.rand(3) * 2 - .1)
+        err = sigma * (np.random.rand(3) * 2 - 0.1)
         point.value = point.value + err
 
         out.append(point)
@@ -83,15 +83,16 @@ column_height = 2 * (h / SDD * SOURCE_RADIUS - column_radius * h / SDD)
 # include a safety factor of 50% / 75%
 column_radius *= 0.80
 column_height *= 0.80
-print(f"Suggested column size: r={column_radius}, h={column_height}, "
-      f"d={2 * column_radius}")
-points = triangle_column_points(rad=column_radius, height=column_height,
-                                num_angles=3)
+print(
+    f"Suggested column size: r={column_radius}, h={column_height}, "
+    f"d={2 * column_radius}"
+)
+points = triangle_column_points(rad=column_radius, height=column_height, num_angles=3)
 rotate_points(points, 0, 0, np.pi / 40)
 plot_scatter3d([p.value for p in points])
 
 # in cm, it looks like 1mm is ok, 2 mm isn't, 3 mm is horrible
-error_magnitude_points = .200
+error_magnitude_points = 0.200
 
 # fake real data
 geoms_true = perturb_geoms(geoms)
@@ -120,24 +121,23 @@ r = scipy.optimize.least_squares(
     x0=params2ndarray(model.params()),
     bounds=model.bounds(),
     verbose=1,
-    method='trf',
-    tr_solver='exact',
-    loss='huber',
-    jac='3-point'
+    method="trf",
+    tr_solver="exact",
+    loss="huber",
+    jac="3-point",
 )
 geoms_calibrated, points_calibrated = model.update(r.x)
 
 
 for d1, d2 in zip(data_true, xray_multigeom_op(geoms_initial, points_initial)):
     plot_scatter2d(d1, d2, det=[w, h])
-for d1, d2 in zip(data_true,
-                  xray_multigeom_op(geoms_calibrated, points_calibrated)):
+for d1, d2 in zip(data_true, xray_multigeom_op(geoms_calibrated, points_calibrated)):
     plot_scatter2d(d1, d2, det=[w, h])
 
 for i, (g1, g2) in enumerate(zip(geoms_true, geoms_calibrated)):
     print(f"--- GEOM {i} ---")
     print(f"source   : {g1.source} : {g2.source}")
-    print(f"detector : {g1.detector} : {g2.detector}")
+    print(f"detector : {g1._detector} : {g2._detector}")
     print(f"roll     : {g1.roll} : {g2.roll}")
     print(f"pitch    : {g1.pitch} : {g2.pitch}")
     print(f"yaw      : {g1.yaw} : {g2.yaw}")
@@ -146,8 +146,7 @@ for i, (g1, g2) in enumerate(zip(geoms_true, geoms_calibrated)):
     try:
         decimal_accuracy = 3
         np.testing.assert_almost_equal(g1.source, g2.source, decimal_accuracy)
-        np.testing.assert_almost_equal(g1.detector, g2.detector,
-                                       decimal_accuracy)
+        np.testing.assert_almost_equal(g1._detector, g2._detector, decimal_accuracy)
         np.testing.assert_almost_equal(g1.roll, g2.roll, decimal_accuracy)
         np.testing.assert_almost_equal(g1.pitch, g2.pitch, decimal_accuracy)
         np.testing.assert_almost_equal(g1.yaw, g2.yaw, decimal_accuracy)
