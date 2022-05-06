@@ -3,11 +3,11 @@ import re
 from typing import Sequence
 
 import numpy as np
-# from tifffile import tifffile
-import imageio
+from tifffile import tifffile
+# import imageio
 from tqdm import tqdm
 
-PROJECTION_FILE_REGEX = 'camera ([1-3])/img_([0-9]{1,6})\.tif$'
+PROJECTION_FILE_REGEX = "camera ([1-3])/img_([0-9]{1,6})\.tif$"
 
 
 def _collect_fnames(
@@ -31,7 +31,8 @@ def _collect_fnames(
                 for i, group in enumerate(groups):
                     if not group.isdigit():
                         raise Exception(
-                            "The regex captured a non-digit, cannot proceed.")
+                            "The regex captured a non-digit, cannot proceed."
+                        )
 
                     tmp_result[i] = int(group)
 
@@ -41,12 +42,15 @@ def _collect_fnames(
     return results, results_filenames
 
 
-def load(path,
-         time_range: range = None,
-         regex: str = PROJECTION_FILE_REGEX,
-         dtype=np.float32,
-         verbose: bool = True,
-         cameras: Sequence = (1, 2, 3)):
+def load(
+    path,
+    time_range: range = None,
+    regex: str = PROJECTION_FILE_REGEX,
+    dtype=np.float32,
+    verbose: bool = True,
+    cameras: Sequence = (1, 2, 3),
+    detector_rows: Sequence = None,
+):
     """Load a stack of data from disk using a pattern."""
     results, results_filenames = _collect_fnames(path, regex)
     # Check the results for continuity in the subsequences range
@@ -62,33 +66,45 @@ def load(path,
         time_range = range(np.min(lists[1]), np.max(lists[1]) + 1)
 
     # load into results
-    im_shape = imageio.imread(results_filenames[0]).shape
-    ims = np.empty((len(time_range), len(cameras), *im_shape), dtype=dtype)
+    im_shape = list(tifffile.imread(results_filenames[0]).shape)
+    if detector_rows is None:
+        rows = slice(0, im_shape[0])
+    else:
+        rows = slice(detector_rows.start, detector_rows.stop)
+    ims = np.zeros((len(time_range), len(cameras), *im_shape), dtype=dtype)
 
     # make a dictionary with in the first key the detector, and second key
     # the timestep
     nested_dict = {i: {} for i in cameras}
-    for i, ((cam_id, t), filename) in enumerate(
-        zip(results, results_filenames)):
+    for i, ((cam_id, t), filename) in enumerate(zip(results, results_filenames)):
         if cam_id in cameras:
             nested_dict[cam_id][t] = filename
 
     # check if wanted timesteps are in the dict, and load them
-    for t_i, t in enumerate(tqdm(time_range)) if verbose else enumerate(
-        time_range):
+    arr = []
+    for t_i, t in enumerate(tqdm(time_range)) if verbose else enumerate(time_range):
         for d_i, d in enumerate(nested_dict.keys()):
             if not t in nested_dict[d]:
-                raise FileNotFoundError(f"Could not find timestep {t} from "
-                                        f"detector {d} in directory {path}.")
-
-            ims[t_i, d_i, ...] = imageio.imread(nested_dict[d][t])
+                raise FileNotFoundError(
+                    f"Could not find timestep {t} from "
+                    f"detector {d} in directory {path}."
+                )
+            ims[t_i, d_i, rows] = tifffile.imread(nested_dict[d][t], maxworkers=1)[
+                detector_rows
+            ]
 
     return np.ascontiguousarray(ims)
 
 
-def preprocess(meas, dark=None, ref=None, dtype=np.float32,
-               ref_lower_density=False, ref_mode='static',
-               ref_normalization=None):
+def preprocess(
+    meas,
+    dark=None,
+    ref=None,
+    dtype=np.float32,
+    ref_lower_density=False,
+    ref_mode="static",
+    ref_normalization=None,
+):
     """
 
     :param meas: Projection images (unreferenced)
@@ -98,6 +114,7 @@ def preprocess(meas, dark=None, ref=None, dtype=np.float32,
     :param ref_lower_density:
     :return:
     """
+
     def _isfinite(a):
         m = a.min()
         M = a.max()
@@ -107,27 +124,26 @@ def preprocess(meas, dark=None, ref=None, dtype=np.float32,
     if dark is not None:
         dark = np.median(dark, axis=0)
         dark = np.expand_dims(dark, 0)
-        dark = np.clip(dark, 0., None, out=dark)
+        dark = np.clip(dark, 0.0, None, out=dark)
 
         meas[:] -= dark
-        np.clip(meas, 0., None, out=meas)
+        np.clip(meas, 0.0, None, out=meas)
         _isfinite(meas)
 
         if ref is not None:
             ref[:] -= dark
-            np.clip(ref, 0., None, out=ref)
+            np.clip(ref, 0.0, None, out=ref)
             _isfinite(ref)
         if ref_normalization is not None:
             ref_normalization[:] -= dark
-            np.clip(ref_normalization, 0., None, out=ref_normalization)
+            np.clip(ref_normalization, 0.0, None, out=ref_normalization)
             _isfinite(ref_normalization)
-
 
     # log(meas) - log(ref) = log(meas/ref)
     if ref is not None:
-        if ref_mode == 'static':
+        if ref_mode == "static":
             ref = np.mean(ref, axis=0)
-        elif ref_mode == 'reco':
+        elif ref_mode == "reco":
             assert len(ref) == len(meas)
         else:
             raise NotImplementedError()
@@ -159,7 +175,7 @@ def preprocess(meas, dark=None, ref=None, dtype=np.float32,
             np.divide(meas, ref, out=meas, where=ref != 0)
             _isfinite(meas)
 
-        np.clip(meas, 1., None, out=meas)
+        np.clip(meas, 1.0, None, out=meas)
 
     np.log(meas, out=meas)
     _isfinite(meas)
@@ -168,9 +184,9 @@ def preprocess(meas, dark=None, ref=None, dtype=np.float32,
         if np.isscalar(ref_normalization):
             max_value = ref_normalization
         else:
-            if ref_mode == 'static':
+            if ref_mode == "static":
                 ref_normalization = np.mean(ref_normalization, axis=0)
-            elif ref_mode == 'reco':
+            elif ref_mode == "reco":
                 assert len(ref_normalization) == len(meas)
             else:
                 raise NotImplementedError()
@@ -178,14 +194,14 @@ def preprocess(meas, dark=None, ref=None, dtype=np.float32,
             # not the most efficient, but otherwise duplicated code
             # computing log(ref/meas) / log(ref)
             # should be normalized between 0 and 1
-            np.clip(ref_normalization, 1., None, out=ref_normalization)
+            np.clip(ref_normalization, 1.0, None, out=ref_normalization)
             bed = np.log(ref_normalization / ref, where=ref != 0)
             _isfinite(bed)
-            np.clip(bed, 0., None, out=bed)
+            np.clip(bed, 0.0, None, out=bed)
 
             for j in range(bed.shape[0]):
                 counts, bins = np.histogram(bed[j].flatten(), bins=1000)
-                counts[:100] = 0.
+                counts[:100] = 0.0
                 max_value = bins[np.argmax(counts)]
                 print(f"Camera {j}: mode of empty column statistic: ", max_value)
 
@@ -203,7 +219,6 @@ def preprocess(meas, dark=None, ref=None, dtype=np.float32,
         # plt.imshow(meas[0,0])
         # plt.show()
         # meas[:] = np.multiply(bed, 5. / max_value)  # artificially reco bed
-
 
     return meas.astype(dtype)
 
