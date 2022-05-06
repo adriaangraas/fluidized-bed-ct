@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from fbrct.scan import (
@@ -34,11 +35,13 @@ detector = {
     "pixel_height": DETECTOR_PIXEL_HEIGHT,
 }
 
+data_dir = os.getenv("DATA_DIR", "/export/scratch3/adriaan/evert/data")
+data_dir_19 = f"{data_dir}/2021-08-19"
+data_dir_20 = f"{data_dir}/2021-08-20"
+data_dir_23 = f"{data_dir}/2021-08-23"
+data_dir_24 = f"{data_dir}/2021-08-24"
+
 calib_dir = str(Path(__file__).parent / "calibration")
-data_dir_19 = "/export/scratch2/adriaan/mnt/scratch2/evert/data/2021-08-19"
-data_dir_20 = "/export/scratch2/adriaan/mnt/scratch2/evert/data/2021-08-20"
-data_dir_23 = "/export/scratch2/adriaan/mnt/scratch3/evert/data/2021-08-23"
-data_dir_24 = "/export/scratch2/adriaan/mnt/scratch3/evert/data/2021-08-24"
 calib = f"{calib_dir}/geom_pre_proc_Calibration_needle_phantom_30degsec_table474mm_calibrated_on_26aug2021.npy"
 
 SCANS = []
@@ -344,7 +347,6 @@ _19_empty_rotating = StaticScan(
     geometry=f"{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy",
     geometry_scaling_factor=1.0 / 1.0106333,
 )
-SCANS.append(_19_empty_rotating)
 
 ###############################################################################
 # Scans on 20 aug 2021
@@ -436,11 +438,24 @@ _23_full_rotating = StaticScan(
     proj_start=1026,
     proj_end=1800,
     is_full=True,
-    is_rotational=False,
+    is_rotational=True,
     geometry=f"{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy",
     geometry_scaling_factor=1.0 / 1.0106333,
 )
 SCANS.append(_23_full_rotating)
+
+_23_full_static = StaticScan(
+    "2021-08-23_pre_proc_Full_30degsec",
+    detector,
+    f"{data_dir_23}/pre_proc_Full_30degsec",
+    proj_start=10,
+    proj_end=1050,
+    is_full=True,
+    is_rotational=False,
+    geometry=f"{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy",
+    geometry_scaling_factor=1.0 / 1.0106333,
+)
+SCANS.append(_23_full_static)
 
 for size in ["10mm", "14mm", "23mm"]:
     _scan = StaticScan(
@@ -463,12 +478,11 @@ for lmin in [19, 20, 22, 25]:
         detector,
         f"{data_dir_23}/pre_proc_{lmin}Lmin",
         liter_per_min=lmin,
-        ref_ran=range(0, 10),
         # darks_dir=f'{data_dir}/pre_proc_Darkfield',
         geometry=f"{calib_dir}/geom_pre_proc_Calibration_needle_phantom_30degsec_table474mm_calibrated_on_26aug2021.npy",
         cameras=(1, 2, 3),
         col_inner_diameter=5.0,
-        references=[_23_full_rotating],
+        references=[_23_full_static],
     )
     SCANS.append(_scan)
 
