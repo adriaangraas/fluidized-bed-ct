@@ -1,10 +1,13 @@
-import copy
-
-from cate.xray import StaticGeometry, XrayOptimizationProblem, \
-    crop_detector, shift, transform
 from cate import annotate, astra
-from scripts.calibration.util import *
+from cate.xray import (
+    StaticGeometry,
+    crop_detector,
+    shift,
+    transform,
+)
 from settings import *
+
+from scripts.calibration.util import *
 
 run_annotation = False
 run_optimalization = True
@@ -25,16 +28,17 @@ class DelftNeedleEntityLocations(annotate.EntityLocations):
     seem to be good horizontal alignment, so its difficult to segment the
     column in annotated layers.
     """
+
     ENTITIES = (
-        'BBB  top ball stake',
-        'BBB  middle ball stake',
-        'BBB  bottom ball stake',
-        'BEE  top ball drill',
-        'BEE  middle eye drill',
-        'BEE  bottom eye drill',
-        'EB  top eye stake',
-        'EB  bottom ball drill',
-        'B  ball drill',
+        "BBB  top ball stake",
+        "BBB  middle ball stake",
+        "BBB  bottom ball stake",
+        "BEE  top ball drill",
+        "BEE  middle eye drill",
+        "BEE  bottom eye drill",
+        "EB  top eye stake",
+        "EB  bottom ball drill",
+        "B  ball drill",
     )
 
     @staticmethod
@@ -51,7 +55,7 @@ def triple_camera_circular_geometry(
     detector_positions: Sequence,
     angles: Sequence,
     weight_decay=None,
-    optimize_rotation=False
+    optimize_rotation=False,
 ):
     """
     Parameters:
@@ -72,32 +76,36 @@ def triple_camera_circular_geometry(
 
     # The first cam needs is totally fixed, to prevent arbitrary shifts
     # in the solution.
-    initial_geoms = [StaticGeometry(
-        source=VectorParameter(source_positions[0], weight_decay=weight_decay),
-        detector=detector_positions[0],
-        roll=None,  # are computed automatically, from src and det
-        pitch=None,
-        yaw=None)]
+    initial_geoms = [
+        StaticGeometry(
+            source=VectorParameter(source_positions[0], weight_decay=weight_decay),
+            detector=detector_positions[0],
+            roll=None,  # are computed automatically, from src and det
+            pitch=None,
+            yaw=None,
+        )
+    ]
     for i in range(1, nr_cams):
-        initial_geoms.append(StaticGeometry(
-            source=VectorParameter(source_positions[i],
-                                   weight_decay=weight_decay),
-            detector=VectorParameter(detector_positions[i],
-                                     weight_decay=weight_decay),
-            roll=ScalarParameter(None),
-            pitch=ScalarParameter(None),
-            yaw=ScalarParameter(None)))
+        initial_geoms.append(
+            StaticGeometry(
+                source=VectorParameter(source_positions[i], weight_decay=weight_decay),
+                detector=VectorParameter(
+                    detector_positions[i], weight_decay=weight_decay
+                ),
+                roll=ScalarParameter(None),
+                pitch=ScalarParameter(None),
+                yaw=ScalarParameter(None),
+            )
+        )
 
     # the whole set-up can be arbitrarily shifted and rotated in space
     # but while keeping sources and detectors relatively fixed
-    shift_param = VectorParameter(np.array([0., 0., 0.]),
-                                  weight_decay=weight_decay)
+    shift_param = VectorParameter(np.array([0.0, 0.0, 0.0]), weight_decay=weight_decay)
     initial_geoms = [shift(g, shift_param) for g in initial_geoms]
-    roll_param, pitch_param, yaw_param = [ScalarParameter(0.) for _ in
-                                          range(3)]
+    roll_param, pitch_param, yaw_param = [ScalarParameter(0.0) for _ in range(3)]
     initial_geoms = [
-        transform(g, roll_param, pitch_param, yaw_param) for g in
-        initial_geoms]
+        transform(g, roll_param, pitch_param, yaw_param) for g in initial_geoms
+    ]
 
     if optimize_rotation:
         # per initial geom, make a list of angles
@@ -117,8 +125,9 @@ def triple_camera_circular_geometry(
     return geoms
 
 
-detector = xray.Detector(DETECTOR_ROWS, DETECTOR_COLS,
-                         DETECTOR_PIXEL_WIDTH, DETECTOR_PIXEL_HEIGHT)
+detector = xray.Detector(
+    DETECTOR_ROWS, DETECTOR_COLS, DETECTOR_PIXEL_WIDTH, DETECTOR_PIXEL_HEIGHT
+)
 
 # data_dir = "/home/adriaan/ownCloud2/"
 # data_dir = "/bigstore/adriaan/data/evert/2021-03-03"
@@ -129,15 +138,18 @@ main_dir = "pre_proc_Calibration_needle_phantom_30degsec_table474mm"
 # main_dir = "pre_proc_5deg_sec_360deg_01"
 # main_dir = "pre_proc_360deg_5degsec_Cal_phantom_table505mm_offcenter"
 # main_dir = "pre_proc_360deg_5degsec_Cal_phantom_table525mm_offcenter_inclined"
-projs_path = f'{data_dir}/{main_dir}'
-ref_path = '/home/adriaan/ownCloud3/pre_proc_Brightfield'
+projs_path = f"{data_dir}/{main_dir}"
+ref_path = "/home/adriaan/ownCloud3/pre_proc_Brightfield"
 vabs = 100
 
+
 def reconstruction(detector):
-    return Reconstruction(projs_path,
-                          detector.todict(),
-                          expected_voxel_size_x=APPROX_VOXEL_WIDTH,
-                          expected_voxel_size_z=APPROX_VOXEL_HEIGHT)
+    return Reconstruction(
+        projs_path,
+        detector.todict(),
+        expected_voxel_size_x=APPROX_VOXEL_WIDTH,
+        expected_voxel_size_z=APPROX_VOXEL_HEIGHT,
+    )
 
 
 if main_dir == "pre_proc_Calibration_needle_phantom_30degsec_table474mm":
@@ -162,33 +174,34 @@ elif main_dir == "pre_proc_Calibration_needle_phantom_30degsec_table534mm":
 else:
     raise Exception
 
-postfix = f'{main_dir}_calibrated_on_26aug2021'
+postfix = f"{main_dir}_calibrated_on_26aug2021"
 
 t_range = range(proj_start, proj_start + nr_projs, 6)
 for t in t_annotated:
     assert proj_start <= t < proj_end, f"{t} is not within proj start-end."
 
-multicam_data = annotated_data(projs_path,
-                               t_annotated,  # any frame will probably do
-                               DelftNeedleEntityLocations,
-                               fname=main_dir,
-                               cameras=[1, 2, 3],
-                               # fulls_path=fulls_path,
-                               open_annotator=run_annotation,
-                               vmin=6., vmax=10.)
+multicam_data = annotated_data(
+    projs_path,
+    t_annotated,  # any frame will probably do
+    DelftNeedleEntityLocations,
+    fname=main_dir,
+    cameras=[1, 2, 3],
+    # fulls_path=fulls_path,
+    open_annotator=run_annotation,
+    vmin=6.0,
+    vmax=10.0,
+)
 astra.pixels2coords(multicam_data, detector)
 
 # geoms, params = xray.circular_geometry(
 #     source_pos, det_pos, nr_angles=len(t_annotated),
 #     parametrization='rotation_from_init')
-pre_geoms = triangle_geom(SOURCE_RADIUS, DETECTOR_RADIUS,
-                          rotation=False, shift=False)
+pre_geoms = triangle_geom(SOURCE_RADIUS, DETECTOR_RADIUS, rotation=False, shift=False)
 srcs = [g.source for g in pre_geoms]
-dets = [g.detector for g in pre_geoms]
+dets = [g._detector for g in pre_geoms]
 
 angles = (np.array(t_annotated) - proj_start) / nr_projs * 2 * np.pi
-multicam_geom = triple_camera_circular_geometry(
-    srcs, dets, angles=angles)
+multicam_geom = triple_camera_circular_geometry(srcs, dets, angles=angles)
 
 # geoms_interp = xray.geoms_from_interpolation(
 #     interpolation_geoms=multicam_geom,
@@ -223,21 +236,20 @@ if run_optimalization:  # optimize, or use existing optimization?
     multicam_geom_flat = [g for c in multicam_geom for g in c]
     multicam_data_flat = [d for c in multicam_data.values() for d in c]
     markers = run_initial_marker_optimization(
-        multicam_geom_flat,
-        multicam_data_flat,
-        nr_iters=2, plot=True, max_nfev=10)
-    np.save(f'markers_{postfix}.npy', markers)
+        multicam_geom_flat, multicam_data_flat, nr_iters=2, plot=True, max_nfev=10
+    )
+    np.save(f"markers_{postfix}.npy", markers)
 
     # calib (export format)
     rotation_0_geoms = {}
     for key, val in zip(multicam_data.keys(), multicam_geom):
         rotation_0_geoms[key] = val[0]._g.asstatic()
-    np.save(f'geom_{postfix}.npy', [rotation_0_geoms])
-    print('Optimalization saved.')
+    np.save(f"geom_{postfix}.npy", [rotation_0_geoms])
+    print("Optimalization saved.")
 else:
     # calibration = np.load(f'calibration_{postfix}.npy', allow_pickle=True)
-    markers = np.load(f'markers_{postfix}.npy', allow_pickle=True)
-    multicam_geom = np.load(f'geom_{postfix}.npy', allow_pickle=True)
+    markers = np.load(f"markers_{postfix}.npy", allow_pickle=True)
+    multicam_geom = np.load(f"geom_{postfix}.npy", allow_pickle=True)
 
 # for d1, d2 in zip(multicam_data[3],
 #                   xray.xray_multigeom_project(multicam_geom, markers)):
@@ -253,7 +265,8 @@ for cam_id in range(1, 4):
         interpolation_geoms=multicam_geom[cam_id - 1],
         interpolation_nrs=t_range,
         interpolation_calibration_nrs=t_annotated,
-        plot=False)
+        plot=False,
+    )
     all_geoms.extend(geoms_interp)
 
     projs = reco.load_sinogram(t_range=t_range, cameras=[cam_id])
@@ -262,11 +275,14 @@ for cam_id in range(1, 4):
 
 all_projs = np.concatenate(all_projs, axis=1)
 vol_id, vol_geom = astra_reco_rotation_singlecamera(
-    reco, all_projs, all_geoms, algo='FDK', iters=150)
+    reco, all_projs, all_geoms, algo="FDK", iters=150
+)
 x = reco.volume(vol_id)
 import pyqtgraph as pq
+
 pq.image(x)
 import matplotlib.pyplot as plt
+
 plt.figure()
 plt.show()
 
