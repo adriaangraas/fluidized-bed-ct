@@ -1,6 +1,9 @@
+import itertools
 import os
 import re
+import warnings
 from typing import Sequence
+from joblib import Memory
 
 import numpy as np
 from tifffile import tifffile
@@ -9,6 +12,10 @@ from tqdm import tqdm
 
 PROJECTION_FILE_REGEX = "camera ([1-3])/img_([0-9]{1,6})\.tif$"
 
+import pathlib
+path = pathlib.Path(__file__).parent.resolve()
+cachedir = str(path.parent / "cache")
+memory = Memory(cachedir, verbose=0)
 
 def _collect_fnames(
     path: str,
@@ -76,96 +83,157 @@ def load(
     # make a dictionary with in the first key the detector, and second key
     # the timestep
     nested_dict = {i: {} for i in cameras}
-    for i, ((cam_id, t), filename) in enumerate(zip(results, results_filenames)):
+    for i, ((cam_id, t), filename) in enumerate(
+        zip(results, results_filenames)):
         if cam_id in cameras:
             nested_dict[cam_id][t] = filename
 
     # check if wanted timesteps are in the dict, and load them
     arr = []
-    for t_i, t in enumerate(tqdm(time_range)) if verbose else enumerate(time_range):
+    for t_i, t in enumerate(tqdm(time_range)) if verbose else enumerate(
+        time_range):
         for d_i, d in enumerate(nested_dict.keys()):
             if not t in nested_dict[d]:
                 raise FileNotFoundError(
                     f"Could not find timestep {t} from "
                     f"detector {d} in directory {path}."
                 )
-            ims[t_i, d_i, rows] = tifffile.imread(nested_dict[d][t], maxworkers=1)[
+            ims[t_i, d_i, rows] = \
+            tifffile.imread(nested_dict[d][t], maxworkers=1)[
                 detector_rows
             ]
 
     return np.ascontiguousarray(ims)
 
 
+@memory.cache
+def reference_via_mode(data, qu=1, deg=20, nr_bins=100, nr_linspace=1000):
+    """For some reason `numpy` is faster (about 2x)."""
+    xp = np
+    data = xp.asarray(data)
+
+    if qu != 0:
+        # edges are unreachable and are estimated by mean
+        ref_mode = xp.mean(data, axis=0)
+    else:
+        ref_mode = xp.zeros(data.shape[1:])
+
+    cams = range(data.shape[1])
+    rows = range(qu, ref_mode.shape[-2] - qu)
+    cols = range(ref_mode.shape[-1])
+    # rows = range(200, 300)  # handy for quick visualization
+    # cols = range(200, 300)
+    total = len(rows) * len(cols) * len(cams)
+    for cam, row, col in tqdm(itertools.product(cams, rows, cols),
+                              total=total):
+        pixeldata = data[:, cam, row - qu:row + qu + 1, col].flatten()
+        bin_values, bin_edges = xp.histogram(
+            pixeldata,
+            bins=nr_bins,
+            # range=(5500, 5600),
+            density=True)
+        bin_width = bin_edges[1] - bin_edges[0]
+        bin_centers = bin_edges[:100] + bin_width / 2
+
+        if xp != np:
+            # assuming its cupy
+            import cupy as cp
+            assert xp == cp
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                fit = xp.polyfit
+                pol = fit(bin_centers, bin_values, deg=deg)
+                xx = xp.linspace(xp.min(bin_centers),
+                                 xp.max(bin_centers),
+                                 nr_linspace)
+                yy = xp.polyval(pol, xx)
+        else:
+            fit = np.polynomial.Polynomial.fit
+            pol = fit(bin_centers, bin_values, deg=deg)
+            xx, yy = pol.linspace(nr_linspace)
+
+        mode_distr = xx[xp.argmax(yy)]
+        ref_mode[cam, row, col] = mode_distr
+
+        # import matplotlib.pyplot as plt
+        # plt.figure(2)
+        # plt.cla()
+        # plt.hist(pixeldata, bins=nr_bins,
+        #          # range=(5500, 7500),
+        #          density=True)
+        # plt.axvline(x=mode_distr, color='r', linewidth=1)
+        # plt.pause(1.)
+
+    # import matplotlib.pyplot as plt
+    # plt.figure()
+    # plt.imshow(ref_mode[0])
+    # plt.show()
+    return ref_mode
+
+
+def _isfinite(a):
+    m = a.min()
+    M = a.max()
+    assert np.isfinite(m)
+    assert np.isfinite(M)
+
+
+def _apply_darkfields(dark, meas):
+    dark = np.median(dark, axis=0)
+    dark = np.expand_dims(dark, 0)
+    dark = np.clip(dark, 0.0, None, out=dark)
+
+    meas[:] -= dark
+    np.clip(meas, 0.0, None, out=meas)
+    _isfinite(meas)
+    return
+
+
+def compute_bed_density(empty, ref, L: float, nr_bins=1000) -> float:
+    # not the most efficient, but otherwise duplicated code
+    # computing log(ref/meas) / log(ref)
+    # should be normalized between 0 and 1
+    np.clip(empty, 1.0, None, out=empty)
+    bed = np.log(empty / ref, where=ref != 0)
+    _isfinite(bed)
+
+    np.clip(bed, 0.0, None, out=bed)
+
+    sum = 0.0
+    for i in range(bed.shape[0]):
+        counts, bins = np.histogram(bed[i].flatten(), bins=nr_bins)
+        counts[:100] = 0.0
+        max_value = bins[np.argmax(counts)]  # corresponds to inner diam
+        print(f"Proj {i}: mode of column statistic: ", max_value)
+        print(f"Proj {i}: density approx.: ", 1 / L * max_value)
+        # import matplotlib.pyplot as plt
+        # plt.figure()
+        # plt.hist(bed.flatten(), bins=1000)
+        # plt.show()
+        sum += (1 / L) * max_value
+
+    avg = sum / bed.shape[0]  # average density over nr. projs/cams
+    print("Average density: ", avg)
+    return avg
+
+
 def preprocess(
     meas,
-    dark=None,
     ref=None,
+    scaling_factor=1.0,
     dtype=np.float32,
     ref_lower_density=False,
-    ref_mode="static",
-    ref_normalization=None,
 ):
     """
 
     :param meas: Projection images (unreferenced)
     :param dark: Darks are always averaged, then subtracted from projs, refs
-    :param ref: Refs are always clipped from 0, and taken mediam
+    :param ref: Refs are always clipped from 0
     :param dtype:
     :param ref_lower_density:
     :return:
     """
-
-    def _isfinite(a):
-        m = a.min()
-        M = a.max()
-        assert np.isfinite(m)
-        assert np.isfinite(M)
-
-    if dark is not None:
-        dark = np.median(dark, axis=0)
-        dark = np.expand_dims(dark, 0)
-        dark = np.clip(dark, 0.0, None, out=dark)
-
-        meas[:] -= dark
-        np.clip(meas, 0.0, None, out=meas)
-        _isfinite(meas)
-
-        if ref is not None:
-            ref[:] -= dark
-            np.clip(ref, 0.0, None, out=ref)
-            _isfinite(ref)
-        if ref_normalization is not None:
-            ref_normalization[:] -= dark
-            np.clip(ref_normalization, 0.0, None, out=ref_normalization)
-            _isfinite(ref_normalization)
-
-    # log(meas) - log(ref) = log(meas/ref)
     if ref is not None:
-        if ref_mode == "static":
-            ref = np.mean(ref, axis=0)
-        elif ref_mode == "reco":
-            assert len(ref) == len(meas)
-        else:
-            raise NotImplementedError()
-
-        # bed = ref - ref_normalization
-        # from scipy.signal import savgol_filter
-        # for i, s in enumerate(bed):
-        #     bed[i, 50:1000, :] = savgol_filter(s[50:1000, :], 521, 1, axis=-2, mode='mirror')
-        #     bed[i, :, :] = savgol_filter(s[:, :], 5, 3, axis=-1, mode='mirror')
-        #
-        # # import matplotlib.pyplot as plt
-        # # plt.figure()
-        # # plt.imshow(bed[0])
-        # # plt.show()
-        # # plt.figure()
-        # # plt.imshow(ref[0])
-        # # plt.figure()
-        # qref = ref_normalization + bed
-        # # plt.imshow(qref[0])
-        # # plt.show()
-        # ref = qref
-
         if ref_lower_density:
             # we want to measure lower density, so need to multiply by -1
             # -(log(meas) - log(ref)) = log(ref/meas)
@@ -178,48 +246,8 @@ def preprocess(
         np.clip(meas, 1.0, None, out=meas)
 
     np.log(meas, out=meas)
+    np.multiply(meas, scaling_factor, out=meas)
     _isfinite(meas)
-
-    if ref_normalization is not None:
-        if np.isscalar(ref_normalization):
-            max_value = ref_normalization
-        else:
-            if ref_mode == "static":
-                ref_normalization = np.mean(ref_normalization, axis=0)
-            elif ref_mode == "reco":
-                assert len(ref_normalization) == len(meas)
-            else:
-                raise NotImplementedError()
-
-            # not the most efficient, but otherwise duplicated code
-            # computing log(ref/meas) / log(ref)
-            # should be normalized between 0 and 1
-            np.clip(ref_normalization, 1.0, None, out=ref_normalization)
-            bed = np.log(ref_normalization / ref, where=ref != 0)
-            _isfinite(bed)
-            np.clip(bed, 0.0, None, out=bed)
-
-            for j in range(bed.shape[0]):
-                counts, bins = np.histogram(bed[j].flatten(), bins=1000)
-                counts[:100] = 0.0
-                max_value = bins[np.argmax(counts)]
-                print(f"Camera {j}: mode of empty column statistic: ", max_value)
-
-                # import matplotlib.pyplot as plt
-                # plt.figure()
-                # plt.hist(bed.flatten(), bins=1000)
-                # plt.show()
-
-        # bed[bed < 0.01] = 0.
-        # bed = -np.log(ref_normalization)
-        np.multiply(meas[:, j], 5.0 / max_value, out=meas[:, j])
-        np.clip(meas[:, j], 0, 5.0, out=meas[:, j])
-
-        # plt.figure()
-        # plt.imshow(meas[0,0])
-        # plt.show()
-        # meas[:] = np.multiply(bed, 5. / max_value)  # artificially reco bed
-
     return meas.astype(dtype)
 
 

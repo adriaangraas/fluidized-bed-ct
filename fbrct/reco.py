@@ -2,9 +2,10 @@ from abc import abstractmethod
 from typing import Any
 
 import numpy as np
+import warnings
 
-from fbrct.loader import load, preprocess
-
+from fbrct.loader import _apply_darkfields, reference_via_mode, \
+    compute_bed_density, load, preprocess
 
 def _astra_fdk_algo(volume_geom, projection_geom, volume_id, sinogram_id):
     import astra
@@ -101,9 +102,11 @@ class Reconstruction:
         ref_mode="static",
         ref_projs=None,
         darks_ran: range = None,
-        ref_normalization_path=None,
-        ref_normalization_projs: range = None,
+        empty_path=None,
+        empty_projs: range = None,
         detector_rows: range = None,
+        density_factor: float = None,
+        col_inner_diameter = None
     ):
         """Loads and preprocesses the sinogram for .
 
@@ -123,33 +126,56 @@ class Reconstruction:
         if detector_rows is not None:
             load_kwargs["detector_rows"] = detector_rows
 
+        dark = None
+        if darks_path is not None:
+            dark = load(darks_path, darks_ran, **load_kwargs)
+
+        ref = None
         if ref_path is not None:
-            p = load(self._path, t_range, **load_kwargs)
             if not ref_projs:
                 ref_projs = None  # use all projs for referencing (static)
                 if ref_mode == "reco":
                     ref_projs = t_range  # reference one-on-one
+            ref = load(ref_path, ref_projs, **load_kwargs)
+            if dark is not None:
+                _apply_darkfields(dark, ref)
 
-            preproc_kwargs = {
-                "ref": load(ref_path, ref_projs, **load_kwargs),
-                "ref_mode": ref_mode,
-            }
-            if darks_path is not None:
-                preproc_kwargs["dark"] = load(darks_path, darks_ran, **load_kwargs)
-            if ref_normalization_path is not None:
-                preproc_kwargs["ref_normalization"] = load(
-                    ref_normalization_path, ref_normalization_projs, **load_kwargs
-                )
+            if ref_mode == "static":  # ref. is not rotational
+                ref = np.mean(ref, axis=0)
+            elif ref_mode == "reco":  # ref. is rotational
+                assert len(ref) == len(t_range)
+            elif ref_mode == "mode":
+                ref = reference_via_mode(ref)
+            else:
+                raise NotImplementedError()
 
-            p = preprocess(p, ref_lower_density=ref_lower_density, **preproc_kwargs)
-        else:
-            p = load(self._path, t_range, **load_kwargs)
-            preproc_kwargs = {}
-            if darks_path is not None:
-                preproc_kwargs["dark"] = load(darks_path, darks_ran, **load_kwargs)
-            p = preprocess(p, **preproc_kwargs)
+            if density_factor is None:
+                density_factor = 1.0
+                if empty_path is not None:
+                    empty = load(empty_path, empty_projs, **load_kwargs)
+                    if dark is not None:
+                        _apply_darkfields(dark, empty)
 
-        return np.ascontiguousarray(p.astype(np.float32))
+                    if ref_mode == "static":
+                        empty = np.mean(empty, axis=0)
+                    elif ref_mode == "reco":
+                        assert len(empty) == len(ref)
+                    else:
+                        raise NotImplementedError()
+
+                    density_factor = compute_bed_density(
+                        empty, ref, L=col_inner_diameter)
+                else:
+                    warnings.warn("No empty projs, or density factor provided."
+                                  " Densities will be computed, rather than "
+                                  "gas fraction!")
+
+        meas = load(self._path, t_range, **load_kwargs)
+        if dark is not None:
+            _apply_darkfields(dark, meas)
+        meas = preprocess(meas, ref, ref_lower_density=ref_lower_density,
+                          scaling_factor=1 / density_factor)
+        return np.ascontiguousarray(meas.astype(np.float32))
 
     @staticmethod
     def compute_volume_dimensions(
@@ -444,7 +470,6 @@ class RayveReconstruction(Reconstruction):
                 iters=iters,
                 min_constraint=min_constraint,
                 max_constraint=max_constraint,
-                use_scaling=False,
                 chunk_size=200,
                 algo="gpu",
                 callback=callback,

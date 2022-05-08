@@ -139,6 +139,7 @@ class Scan(ABC):
         name,
         detector,
         projs_dir,
+        projs=None,
         geometry=None,
         geometry_scaling_factor=None,
         geometry_rotation_offset=0.0,
@@ -147,7 +148,11 @@ class Scan(ABC):
         cameras=(1, 2, 3),
         references=None,
         darks=None,
-        normalization=None,
+        empty=None,
+        is_rotational: bool = False,
+        is_full: bool = False,
+        col_inner_diameter: float = None,
+        density_factor: float = None
     ):
         if references is None:
             references = []
@@ -163,7 +168,12 @@ class Scan(ABC):
         self.phantoms = []
         self.references = references
         self.darks = darks
-        self.normalization = normalization
+        self.empty = empty
+        self.is_rotational = is_rotational
+        self.is_full = is_full
+        self.projs = projs
+        self.col_inner_diameter = col_inner_diameter
+        self.density_factor = density_factor
 
     def add_phantom(self, phantom: Phantom):
         self.phantoms.append(phantom)
@@ -190,16 +200,13 @@ class StaticScan(Scan):
         *args,
         proj_start: int,
         proj_end: int,
-        is_rotational: bool = False,
-        is_full: bool = False,
         **kwargs,
     ):
         assert proj_end > proj_start > 0
         self.proj_start = proj_start
         self.proj_end = proj_end
-        self.is_rotational = is_rotational
-        self.is_full = is_full
-        super().__init__(*args, **kwargs)
+        projs = list(range(proj_start, proj_end))
+        super().__init__(*args, projs, **kwargs)
 
     @property
     def nr_projs(self):
@@ -242,10 +249,8 @@ class StaticScan(Scan):
 
 class DynamicScan(Scan):
     def __init__(
-        self, *args, ref_ran=None, ref_normalization_ran=None, timeframes=None, **kwargs
+        self, *args, timeframes=None, **kwargs
     ):
-        self.ref_ran = ref_ran
-        self.ref_normalization_ran = ref_normalization_ran
         self.timeframes = timeframes
         super().__init__(*args, **kwargs)
 
@@ -265,11 +270,19 @@ class DynamicScan(Scan):
 class TraverseScan(DynamicScan):
     def __init__(self, *args, motor_velocity, **kwargs):
         self.expected_velocity = motor_velocity
+        assert 'is_rotational' not in kwargs, ("Traverse Scan is non"
+                                               "rotational by default.")
+        kwargs['is_rotational'] = False
         super().__init__(*args, **kwargs)
 
 
 class FluidizedBedScan(DynamicScan):
-    def __init__(self, *args, liter_per_min, col_inner_diameter, **kwargs):
+    def __init__(self, *args, liter_per_min, **kwargs):
         self.liter_per_min = liter_per_min
-        self.col_inner_diameter = col_inner_diameter
+        assert 'is_rotational' not in kwargs or kwargs[
+            'is_rotational'] is False, ("FluidizedBedScan is not rotational.")
+        assert 'is_full' not in kwargs or kwargs['is_full'] is True, (
+            "FluidizedBedScan is always with full column.")
+        kwargs['is_full'] = True
+        kwargs['is_rotational'] = False
         super().__init__(*args, **kwargs)

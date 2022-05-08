@@ -445,7 +445,7 @@ _23_full_rotating = StaticScan(
 SCANS.append(_23_full_rotating)
 
 _23_full_static = StaticScan(
-    "2021-08-23_pre_proc_Full_30degsec",
+    "2021-08-23_pre_proc_Full",
     detector,
     f"{data_dir_23}/pre_proc_Full_30degsec",
     proj_start=10,
@@ -456,6 +456,19 @@ _23_full_static = StaticScan(
     geometry_scaling_factor=1.0 / 1.0106333,
 )
 SCANS.append(_23_full_static)
+
+_23_empty_static = StaticScan(
+    "2021-08-23_pre_proc_Empty",
+    detector,
+    f"{data_dir_23}/pre_proc_Empty_30degsec",
+    proj_start=10,
+    proj_end=1000,
+    is_full=True,
+    is_rotational=False,
+    geometry=f"{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy",
+    geometry_scaling_factor=1.0 / 1.0106333,
+)
+SCANS.append(_23_empty_static)
 
 for size in ["10mm", "14mm", "23mm"]:
     _scan = StaticScan(
@@ -474,7 +487,7 @@ for size in ["10mm", "14mm", "23mm"]:
 # #     the amended 3x10mm post-calibration, for the 19lmin scan
 for lmin in [19, 20, 22, 25]:
     _scan = FluidizedBedScan(
-        f"2021-08-23_{lmin}Lmin_reffull",
+        f"2021-08-23_{lmin}Lmin",
         detector,
         f"{data_dir_23}/pre_proc_{lmin}Lmin",
         liter_per_min=lmin,
@@ -483,7 +496,10 @@ for lmin in [19, 20, 22, 25]:
         cameras=(1, 2, 3),
         col_inner_diameter=5.0,
         references=[_23_full_static],
+        empty=_23_empty_static,
+        density_factor=0.10167654752731324,
     )
+    _scan.references.append(_scan)  # other possible reference is own data
     SCANS.append(_scan)
 
 ###############################################################################
@@ -577,7 +593,6 @@ _scan = StaticScan(
     geometry_scaling_factor=1.0 / 1.0106333,
     references=[_24_full_rotating],
     darks=_24_darks,
-    normalization=_24_empty_rotating,
 )
 SCANS.append(_scan)
 

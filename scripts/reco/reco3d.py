@@ -6,6 +6,7 @@ from typing import Tuple, Callable
 import matplotlib.pyplot as plt
 import numpy as np
 import tifffile
+import warnings
 
 import scripts.settings as sett
 from fbrct import loader, reco, Scan, DynamicScan, StaticScan, FluidizedBedScan
@@ -41,6 +42,7 @@ def reconstruct(
     plot: bool = False,
     iters: int = 200,
     locking=False,
+    overwrite=False,
     save=False,
     algo="sirt",
     timeframes=None,
@@ -103,6 +105,7 @@ def reconstruct(
                 t=t,
                 save=save,
                 locking=locking,
+                overwrite=overwrite,
                 plot=plot,
             )
 
@@ -129,6 +132,7 @@ def reconstruct(
             iters,
             callbackf=_callbackf,
             locking=locking,
+            overwrite=overwrite,
             save=save,
         )
     else:
@@ -137,7 +141,7 @@ def reconstruct(
     reconstructor.clear()
 
 
-def _sino_dynamic(reco, scan: Scan, timeframes=None, normalization=None, **kwargs):
+def _sino_dynamic(reco, scan: Scan, timeframes=None, **kwargs):
     """
 
     Parameters
@@ -145,11 +149,7 @@ def _sino_dynamic(reco, scan: Scan, timeframes=None, normalization=None, **kwarg
     normalization : object
     """
 
-    ref_projs = []
-    ref_path = None
-    ref_lower_density = None
-    ref_mode = "static"
-    if ref is not None:
+    if isinstance(ref, StaticScan):
         if issubclass(type(scan), FluidizedBedScan):
             assert (
                 not ref.is_rotational
@@ -160,17 +160,33 @@ def _sino_dynamic(reco, scan: Scan, timeframes=None, normalization=None, **kwarg
         ref_path = ref.projs_dir
         ref_lower_density = not ref.is_full
         ref_projs = [i for i in range(ref.proj_start, ref.proj_end)]
+        ref_mode = "static"
+    elif isinstance(ref, FluidizedBedScan):
+        if issubclass(type(scan), FluidizedBedScan):
+            if ref.liter_per_min != scan.liter_per_min:
+                warnings.warn("Using a reference with a different l/min then "
+                              "that is used in the experiment. This is not "
+                              "optimal.")
+        ref_path = ref.projs_dir
+        ref_lower_density = not ref.is_full
+        ref_projs = ref.projs
+        ref_mode = "mode"
+    else:
+        ref_projs = []
+        ref_path = None
+        ref_lower_density = None
+        ref_mode = "static"
 
-    ref_normalization_projs = []
-    ref_normalization_path = None
-    if normalization is not None:
+    empty_path = None
+    empty_projs = None
+    if scan.density_factor is None:
         assert ref_path is not None
-        assert normalization.is_rotational
-        ref_normalization_path = normalization.projs_dir
-        for a in angles:
-            ref_normalization_projs.append(
-                a - scan.proj_start + normalization.proj_start
-            )
+        if scan.empty is not None:
+            assert not scan.empty.is_rotational
+            empty_path = scan.empty.projs_dir
+            empty_projs = [p for p in range(
+                scan.empty.proj_start, scan.empty.proj_end
+            )]
 
     sino = reco.load_sinogram(
         t_range=timeframes,
@@ -179,11 +195,13 @@ def _sino_dynamic(reco, scan: Scan, timeframes=None, normalization=None, **kwarg
         ref_mode=ref_mode,
         ref_path=ref_path,
         ref_projs=ref_projs,
-        ref_normalization_path=ref_normalization_path,
-        ref_normalization_projs=ref_normalization_projs,
+        empty_path=empty_path,
+        empty_projs=empty_projs,
         # darks_ran=range(10),
         # darks_path=scan.darks_dir,
         ref_lower_density=ref_lower_density,
+        density_factor=scan.density_factor,
+        col_inner_diameter=scan.col_inner_diameter,
         **kwargs,
     )
     return sino
@@ -251,8 +269,8 @@ def _sino_static(
             darks_path=darks_path,
             darks_ran=darks_ran,
             ref_lower_density=ref_lower_density,
-            ref_normalization_path=ref_normalization_path,
-            ref_normalization_projs=ref_normalization_projs,
+            empty_path=ref_normalization_path,
+            empty_projs=ref_normalization_projs,
         )
         sino = np.squeeze(sino, axis=0)
         # sino = np.transpose(sino, [1, 0, 2])
@@ -288,6 +306,7 @@ def _inner_reco(
     t: int = None,
     callbackf: Callable = None,
     locking: bool = False,
+    overwrite: bool = False,
     save: bool = False,
     save_tiff: bool = False,
     save_mat: bool = False,
@@ -329,7 +348,7 @@ def _inner_reco(
     #    sino[0, i] = denoise_wavelet(s, 1e-1, rescale_sigma=True)
 
     filename = _fname("npy", t)
-    if os.path.exists(filename):
+    if os.path.exists(filename) and not overwrite:
         print(f"File {filename} exists, continuing.")
         return
 
@@ -412,7 +431,7 @@ if __name__ == "__main__":
         default="all",
     )
     parser.add_argument(
-        "--ref-name",
+        "--ref",
         type=str,
         help="Name of the reference scan."
         " Must be available in settings.py. If not "
@@ -480,10 +499,11 @@ if __name__ == "__main__":
     parser.add_argument("--save-tiff", action="store_true", default=False)
     parser.add_argument("--save-mat", action="store_true", default=False)
     parser.add_argument("--locking", action="store_true", default=False)
+    parser.add_argument("--overwrite", action="store_true", default=False)
 
     args = parser.parse_args()
     name = args.scan
-    refname = args.ref_name
+    refname = args.ref
     algo = args.algo
     iters = args.iters
     recodir = args.recodir
@@ -495,6 +515,7 @@ if __name__ == "__main__":
     plot = args.plot
     save = args.save
     locking = args.locking
+    overwrite = args.overwrite
     detector_rows = args.detector_rows
     ref_max = args.ref_max
 
@@ -508,7 +529,8 @@ if __name__ == "__main__":
     else:
         scans = sett.SCANS
 
-    kwargs = {"plot": plot, "locking": locking, "save": save}
+    kwargs = {"plot": plot, "locking": locking, "save": save,
+              "overwrite": overwrite}
     if algo is not None:
         kwargs["algo"] = algo
     if iters is not None:
@@ -536,15 +558,6 @@ if __name__ == "__main__":
         if refname is None:
             if len(scan.references) == 1:
                 ref = scan.references[0]
-                if ref_max is not None:
-                    if ref.is_rotational:
-                        raise ValueError(
-                            "Cannot set maximum to-use projections for averaging"
-                            " reference. when the scan is rotational, there is only"
-                            " one projection per angle, nothing to average."
-                        )
-                    assert ref_max >= 1
-                    ref.proj_end = min((ref.proj_start + ref_max, ref.proj_end))
             else:
                 raise ValueError(
                     f"Zero, or multiple references defined for scan {scan.name}. Either"
@@ -556,7 +569,34 @@ if __name__ == "__main__":
             assert len(refs) == 1
             ref = refs[0]
 
-        if scan.normalization is not None:
-            kwargs["normalization"] = scan.normalization
+        if ref_max is not None:
+            if isinstance(ref, StaticScan):
+                if ref.is_rotational:
+                    raise ValueError(
+                        "Cannot set maximum to-use projections for averaging"
+                        " reference. When the scan is rotational, there is only"
+                        " one projection per angle, nothing to average."
+                    )
+                assert ref_max >= 1
+                ref.proj_end = min((ref.proj_start + ref_max, ref.proj_end))
+            elif isinstance(ref, FluidizedBedScan):
+                ref.projs = range(0, ref_max)
+            else:
+                raise NotImplementedError(f"Don't know how to apply `ref_max` "
+                                          f"to {ref}.")
+
+            if isinstance(scan.empty, StaticScan):
+                if scan.empty.is_rotational:
+                    raise ValueError(
+                        "Cannot set maximum to-use projections for averaging"
+                        " empty. When the scan is rotational, there is only"
+                        " one projection per angle, nothing to average."
+                    )
+                assert ref_max >= 1
+                scan.empty.proj_end = min(
+                    (scan.empty.proj_start + ref_max, scan.empty.proj_end))
+            else:
+                raise NotImplementedError(f"Don't know how to apply `ref_max` "
+                                          f"to {scan.empty}.")
 
         reconstruct(scan, recodir, ref, **kwargs)
