@@ -145,7 +145,10 @@ class Reconstruction:
             elif ref_mode == "reco":  # ref. is rotational
                 assert len(ref) == len(t_range)
             elif ref_mode == "mode":
-                ref = reference_via_mode(ref)
+                ref_reduced = np.zeros(ref.shape[1:], ref.dtype)
+                ref_reduced[..., detector_rows, :] = reference_via_mode(
+                    ref[..., detector_rows, :])
+                ref = ref_reduced
             else:
                 raise NotImplementedError()
 
@@ -156,7 +159,7 @@ class Reconstruction:
                     if dark is not None:
                         _apply_darkfields(dark, empty)
 
-                    if ref_mode == "static":
+                    if ref_mode == "static" or ref_mode == "mode":
                         empty = np.mean(empty, axis=0)
                     elif ref_mode == "reco":
                         assert len(empty) == len(ref)
