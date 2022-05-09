@@ -94,7 +94,9 @@ def reconstruct(
         )
         # per-frame reconstruction:
         for t, sino_t in zip(timeframes, projs):
-            plot_projs(projs[0])
+            if plot:
+                plot_projs(projs[0])
+
             _inner_reco(
                 scan,
                 reconstructor,
