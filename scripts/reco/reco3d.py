@@ -44,6 +44,8 @@ def reconstruct(
     locking=False,
     overwrite=False,
     save=False,
+    save_tiff=False,
+    save_mat=False,
     algo="sirt",
     timeframes=None,
     detector_rows: range = None,
@@ -104,6 +106,8 @@ def reconstruct(
                 callbackf=_callbackf,
                 t=t,
                 save=save,
+                save_tiff=save_tiff,
+                save_mat=save_mat,
                 locking=locking,
                 overwrite=overwrite,
                 plot=plot,
@@ -514,6 +518,8 @@ if __name__ == "__main__":
     cam = args.cam
     plot = args.plot
     save = args.save
+    save_tiff = args.save_tiff
+    save_mat = args.save_mat
     locking = args.locking
     overwrite = args.overwrite
     detector_rows = args.detector_rows
@@ -530,7 +536,8 @@ if __name__ == "__main__":
         scans = sett.SCANS
 
     kwargs = {"plot": plot, "locking": locking, "save": save,
-              "overwrite": overwrite}
+              "overwrite": overwrite, 'save_tiff': save_tiff,
+              'save_mat': save_mat}
     if algo is not None:
         kwargs["algo"] = algo
     if iters is not None:
