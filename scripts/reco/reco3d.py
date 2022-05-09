@@ -89,15 +89,16 @@ def reconstruct(
             timeframes = scan_timeframes
 
         projs = _sino_dynamic(
-            reconstructor, scan, timeframes=timeframes, detector_rows=detector_rows
+            scan, reconstructor,
+            timeframes=timeframes, detector_rows=detector_rows
         )
-
         # per-frame reconstruction:
         for t, sino_t in zip(timeframes, projs):
             plot_projs(projs[0])
             _inner_reco(
                 scan,
                 reconstructor,
+                recodir,
                 algo,
                 sino_t,
                 scan.geometry(),
@@ -115,7 +116,8 @@ def reconstruct(
 
         reconstructor.clear()
     elif isinstance(scan, StaticScan):
-        projs, geoms = _sino_static(reconstructor, scan, ref, plot=plot, **kwargs)
+        projs, geoms = _sino_static(scan, reconstructor,
+                                    ref, plot=plot, **kwargs)
         plot_projs(projs)
         # vol_id, vol_geom = reco.backward(
         #     proj_id,
@@ -130,6 +132,8 @@ def reconstruct(
         _inner_reco(
             scan,
             reconstructor,
+            recodir,
+            algo,
             projs,
             geoms,
             voxels_x,
@@ -145,7 +149,12 @@ def reconstruct(
     reconstructor.clear()
 
 
-def _sino_dynamic(reco, scan: Scan, timeframes=None, **kwargs):
+def _sino_dynamic(
+    scan: Scan,
+    reco: Reconstruction,
+    timeframes=None,
+    **kwargs
+):
     """
 
     Parameters
@@ -212,8 +221,8 @@ def _sino_dynamic(reco, scan: Scan, timeframes=None, **kwargs):
 
 
 def _sino_static(
-    reco: Reconstruction,
     scan: StaticScan,
+    reco: Reconstruction,
     ref: Scan = None,
     plot: bool = False,
     cameras: Tuple = None,
@@ -302,6 +311,7 @@ def _sino_static(
 def _inner_reco(
     scan: Scan,
     reco: Reconstruction,
+    recodir: str,
     algo: str,
     sino,
     geoms,
