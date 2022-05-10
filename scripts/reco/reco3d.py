@@ -49,6 +49,7 @@ def reconstruct(
     algo="sirt",
     timeframes=None,
     detector_rows: range = None,
+    ref_reduction: str = None
 ):
     print(f"Next up is {scan}...")
 
@@ -58,7 +59,7 @@ def reconstruct(
         # median_filter(x, size=3, output=x)
         # footprint = cp.ones((1, 1, 3), dtype=cp.bool)
         # median_filter(x, footprint=footprint, output=x)
-        if plot and i % 50 == 0:
+        if plot and i % 100 == 0:
             # if i % 3 == 0:
             # x[x < 0.001] = 0.
             plt.figure("quick-3d")
@@ -74,23 +75,24 @@ def reconstruct(
     reconstructor = _reco(scan.projs_dir, scan.detector)
 
     if isinstance(scan, DynamicScan):
-        if scan.timeframes is None:
-            scan_timeframes = loader.projection_numbers(scan.projs_dir)  # all frames
+        if scan.projs is None:
+            scan_projs = loader.projection_numbers(scan.projs_dir)  # all frames
         else:
-            scan_timeframes = scan.timeframes
+            scan_projs = scan.projs
 
         if timeframes is not None:
-            if not np.all([s in scan_timeframes for s in timeframes]):
+            if not np.all([s in scan_projs for s in timeframes]):
                 raise ValueError(
                     "One or more timeframes are not in the set of"
-                    " the scan's defined timeframes."
+                    " the scan's defined projections."
                 )
         else:
-            timeframes = scan_timeframes
+            timeframes = scan_projs
 
         projs = _sino_dynamic(
-            scan, reconstructor,
-            timeframes=timeframes, detector_rows=detector_rows
+            scan, reconstructor, ref,
+            timeframes=timeframes, detector_rows=detector_rows,
+            ref_reduction=ref_reduction
         )
         # per-frame reconstruction:
         for t, sino_t in zip(timeframes, projs):
@@ -154,6 +156,8 @@ def reconstruct(
 def _sino_dynamic(
     scan: Scan,
     reco: Reconstruction,
+    ref: Scan,
+    ref_reduction: None,
     timeframes=None,
     **kwargs
 ):
@@ -175,7 +179,10 @@ def _sino_dynamic(
         ref_path = ref.projs_dir
         ref_lower_density = not ref.is_full
         ref_projs = [i for i in range(ref.proj_start, ref.proj_end)]
-        ref_mode = "static"
+        ref_rotational = ref.is_rotational
+        if not ref_reduction in ('mean', 'median'):
+            warnings.warn("For static scans, 'mean' or 'medium' are good"
+                          " reduction choices.")
     elif isinstance(ref, FluidizedBedScan):
         if issubclass(type(scan), FluidizedBedScan):
             if ref.liter_per_min != scan.liter_per_min:
@@ -185,19 +192,27 @@ def _sino_dynamic(
         ref_path = ref.projs_dir
         ref_lower_density = not ref.is_full
         ref_projs = ref.projs
-        ref_mode = "mode"
+        if not ref_reduction in ('mode',):
+            warnings.warn("For fluidized bed scans, 'mode' is a good"
+                          " reduction choice. Another option that might not"
+                          " introdce bubble bias is 'min', but this will cause"
+                          " a density mismatch.")
+        ref_rotational = ref.is_rotational
     else:
         ref_projs = []
         ref_path = None
         ref_lower_density = None
-        ref_mode = "static"
+        ref_rotational = False
 
     empty_path = None
     empty_projs = None
+    empty_rotational = False
     if scan.density_factor is None:
         assert ref_path is not None
         if scan.empty is not None:
+            empty_rotational = scan.empty.is_rotational
             assert not scan.empty.is_rotational
+            assert not scan.empty.is_full
             empty_path = scan.empty.projs_dir
             empty_projs = [p for p in range(
                 scan.empty.proj_start, scan.empty.proj_end
@@ -207,10 +222,12 @@ def _sino_dynamic(
         t_range=timeframes,
         # t_range=range(t, t + 1),
         # t_range=range(1, t),  # hacky way to average projs
-        ref_mode=ref_mode,
+        ref_rotational=ref_rotational,
+        ref_reduction=ref_reduction,
         ref_path=ref_path,
         ref_projs=ref_projs,
         empty_path=empty_path,
+        empty_rotational=empty_rotational,
         empty_projs=empty_projs,
         # darks_ran=range(10),
         # darks_path=scan.darks_dir,
@@ -277,7 +294,7 @@ def _sino_static(
     for cam in cameras:
         sino = reco.load_sinogram(
             t_range=angles,
-            ref_mode=ref_mode,
+            ref_rotational=ref_mode,
             cameras=(cam,),
             ref_path=ref_path,
             ref_projs=ref_projs,
@@ -407,8 +424,10 @@ def _inner_reco(
         }
 
         print(f"Saving {filename}...")
-        if save:
+        if save or save_mat or save_tiff:
             os.makedirs(os.path.dirname(filename), exist_ok=True)
+
+        if save:
             np.save(filename, infodict, allow_pickle=True)
 
         if save_tiff:
@@ -432,7 +451,7 @@ def _inner_reco(
 
         pq.image(x.T)
         plt.figure()
-        plt.pause(1000)
+        plt.show()
 
 
 if __name__ == "__main__":
@@ -509,6 +528,14 @@ if __name__ == "__main__":
         help="Limit the number of averaging reference projections, to save loading time.",
         default=None,
     )
+    parser.add_argument(
+        "--ref-reduction",
+        type=str,
+        help="For nonrotational references, how to average the projections."
+             " When the ref is a fluidized bed, choose `mode` or `min`. For "
+             " e.g. a full bed with many shots, choose `mean` or `median`.",
+        default=None,
+    )
 
     parser.add_argument("--plot", "--p", action="store_true", default=False)
     parser.add_argument("--save", "--s", action="store_true", default=False)
@@ -536,6 +563,7 @@ if __name__ == "__main__":
     overwrite = args.overwrite
     detector_rows = args.detector_rows
     ref_max = args.ref_max
+    ref_reduction = args.ref_reduction
 
     if plot:
         plt.rcParams.update({"figure.raise_window": False})
@@ -549,7 +577,7 @@ if __name__ == "__main__":
 
     kwargs = {"plot": plot, "locking": locking, "save": save,
               "overwrite": overwrite, 'save_tiff': save_tiff,
-              'save_mat': save_mat}
+              'save_mat': save_mat, 'ref_reduction': ref_reduction}
     if algo is not None:
         kwargs["algo"] = algo
     if iters is not None:
@@ -584,9 +612,16 @@ if __name__ == "__main__":
                     f" to reconstruct."
                 )
         else:
-            refs = sett.get_scans(refname)
-            assert len(refs) == 1
-            ref = refs[0]
+            found = False
+            for ref in scan.references:
+                if ref.name == refname:
+                    found = True
+                    break
+
+            if not found:
+                refs = sett.get_scans(refname)
+                assert len(refs) == 1
+                raise ValueError(f"Add {refs[0].name} to {scan}'s references.")
 
         if ref_max is not None:
             if isinstance(ref, StaticScan):
@@ -599,7 +634,7 @@ if __name__ == "__main__":
                 assert ref_max >= 1
                 ref.proj_end = min((ref.proj_start + ref_max, ref.proj_end))
             elif isinstance(ref, FluidizedBedScan):
-                ref.projs = range(0, ref_max)
+                ref.projs = range(ref.projs[0], ref.projs[0] + ref_max)
             else:
                 raise NotImplementedError(f"Don't know how to apply `ref_max` "
                                           f"to {ref}.")
