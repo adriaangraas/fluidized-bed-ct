@@ -180,6 +180,8 @@ def _sino_dynamic(
         ref_lower_density = not ref.is_full
         ref_projs = [i for i in range(ref.proj_start, ref.proj_end)]
         ref_rotational = ref.is_rotational
+        if ref_reduction is None:
+            ref_reduction = 'mean'
         if not ref_reduction in ('mean', 'median'):
             warnings.warn("For static scans, 'mean' or 'medium' are good"
                           " reduction choices.")
@@ -192,6 +194,8 @@ def _sino_dynamic(
         ref_path = ref.projs_dir
         ref_lower_density = not ref.is_full
         ref_projs = ref.projs
+        if ref_reduction is None:
+            ref_reduction = 'mode'
         if not ref_reduction in ('mode',):
             warnings.warn("For fluidized bed scans, 'mode' is a good"
                           " reduction choice. Another option that might not"

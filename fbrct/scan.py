@@ -248,10 +248,7 @@ class StaticScan(Scan):
 
 
 class DynamicScan(Scan):
-    def __init__(
-        self, *args, timeframes=None, **kwargs
-    ):
-        self.timeframes = timeframes
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
     def geometry(self):
@@ -268,7 +265,8 @@ class DynamicScan(Scan):
 
 
 class TraverseScan(DynamicScan):
-    def __init__(self, *args, motor_velocity, **kwargs):
+    def __init__(self, *args, timeframes, motor_velocity, **kwargs):
+        self.timeframes = timeframes
         self.expected_velocity = motor_velocity
         assert 'is_rotational' not in kwargs, ("Traverse Scan is non"
                                                "rotational by default.")

@@ -374,7 +374,7 @@ for lmin in [18, 19, 20, 22, 25]:
         col_inner_diameter=5.0,
         references=[],
         empty=_19_empty_static,
-        projs = [t for t in range(100, 1000)]  # TODO: per scan decide
+        projs=[t for t in range(100, 1300)]  # TODO: per scan decide
         # density_factor=0.10167654752731324,
     )
     _scan.references.append(copy.deepcopy(_scan))  # other possible reference is own
