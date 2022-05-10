@@ -1,3 +1,4 @@
+import copy
 import os
 from pathlib import Path
 
@@ -35,11 +36,12 @@ detector = {
     "pixel_height": DETECTOR_PIXEL_HEIGHT,
 }
 
-data_dir = os.getenv("DATA_DIR", "/export/scratch3/adriaan/evert/data")
-data_dir_19 = f"{data_dir}/2021-08-19"
-data_dir_20 = f"{data_dir}/2021-08-20"
-data_dir_23 = f"{data_dir}/2021-08-23"
-data_dir_24 = f"{data_dir}/2021-08-24"
+data_dir_scratch2 = os.getenv("DATA_DIR", "/export/scratch2/adriaan/evert/data")
+data_dir_scratch3 = os.getenv("DATA_DIR", "/export/scratch3/adriaan/evert/data")
+data_dir_19 = f"{data_dir_scratch2}/2021-08-19"
+data_dir_20 = f"{data_dir_scratch3}/2021-08-20"
+data_dir_23 = f"{data_dir_scratch3}/2021-08-23"
+data_dir_24 = f"{data_dir_scratch3}/2021-08-24"
 
 calib_dir = str(Path(__file__).parent / "calibration")
 calib = f"{calib_dir}/geom_pre_proc_Calibration_needle_phantom_30degsec_table474mm_calibrated_on_26aug2021.npy"
@@ -333,20 +335,50 @@ def get_scans(name: str) -> list:
 ###############################################################################
 # Scans on 19 aug 2021
 ###############################################################################
-ref_dir = (f"/export/scratch2/adriaan/evert/data/2021-08-19/pre_proc_Empty_30degsec",)
-ref_ran = (range(1, 100),)
+# _19_empty_rotating = StaticScan(
+#     "2021-08-19_pre_proc_Empty_30degsec",
+#     detector,
+#     f"{data_dir_19}/pre_proc_Empty_30degsec",
+#     proj_start=1026, # TODO or 1027
+#     proj_end=100, # todo
+#     is_full=False,
+#     is_rotational=True,
+#     geometry=f"{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy",
+#     geometry_scaling_factor=1.0 / 1.0106333,
+# )
 
-_19_empty_rotating = StaticScan(
+_19_empty_static = StaticScan(
     "2021-08-19_pre_proc_Empty_30degsec",
     detector,
     f"{data_dir_19}/pre_proc_Empty_30degsec",
-    proj_start=1,
-    proj_end=100,
+    proj_start=10,
+    proj_end=1026,
     is_full=False,
-    is_rotational=True,
+    is_rotational=False,
     geometry=f"{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy",
     geometry_scaling_factor=1.0 / 1.0106333,
 )
+
+# Note: many of these scans contain jittered/missing frames, reconstructions may
+# be incoherent
+for lmin in [18, 19, 20, 22, 25]:
+    _scan = FluidizedBedScan(
+        f"2021-08-19_{lmin}Lmin",
+        detector,
+        f"{data_dir_19}/pre_proc_{lmin}Lmin",
+        liter_per_min=lmin,
+        # darks_dir=f'{data_dir}/pre_proc_Darkfield',
+        geometry=f"{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy",
+        geometry_scaling_factor=1.0 / 1.0106333,
+        cameras=(1, 2, 3),
+        col_inner_diameter=5.0,
+        references=[],
+        empty=_19_empty_static,
+        projs = [t for t in range(100, 1000)]  # TODO: per scan decide
+        # density_factor=0.10167654752731324,
+    )
+    _scan.references.append(copy.deepcopy(_scan))  # other possible reference is own
+    SCANS.append(_scan)
 
 ###############################################################################
 # Scans on 20 aug 2021
@@ -405,7 +437,7 @@ for mmsec, ran in [(62, range(100, 200)), (125, range(40, 100))]:
                 geometry_scaling_factor=1.0 / 1.0106333 if scaling != "" else None,
                 framerate=65,
                 timeframes=range(ran.start - 10, ran.stop + 10),
-                references=[_19_empty_rotating]
+                references=[_19_empty_static]
                 # col_inner_diameter=5.0,
             )
             _scan.add_phantom(MovingPhantom(size_of_marble, interesting_time=ran))
@@ -499,7 +531,7 @@ for lmin in [19, 20, 22, 25]:
         empty=_23_empty_static,
         # density_factor=0.10167654752731324,
     )
-    _scan.references.append(_scan)  # other possible reference is own data
+    _scan.references.append(copy.deepcopy(_scan))  # other possible reference is own
     SCANS.append(_scan)
 
 ###############################################################################
