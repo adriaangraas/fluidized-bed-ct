@@ -92,6 +92,22 @@ class Reconstruction:
         self._expected_voxel_size_x = expected_voxel_size_x
         self._expected_voxel_size_z = expected_voxel_size_z
 
+    def _reduce_ref(self, ref, reduction: str, detector_rows):
+        if reduction == 'mean':
+            reduced = np.mean(ref, axis=0)
+        elif reduction == 'median':
+            reduced = np.median(ref, axis=0)
+        elif reduction == 'min':
+            reduced = np.min(ref, axis=0)
+        elif reduction == 'mode':
+            reduced = np.zeros(ref.shape[1:], ref.dtype)
+            reduced[..., detector_rows, :] = reference_via_mode(
+                ref[..., detector_rows, :])
+        else:
+            raise ValueError
+
+        return reduced
+
     def load_sinogram(
         self,
         t_range=None,
@@ -99,10 +115,13 @@ class Reconstruction:
         darks_path=None,
         ref_path=None,
         ref_lower_density=False,
-        ref_mode="static",
+        ref_rotational=False,
+        ref_reduction=None,
         ref_projs=None,
         darks_ran: range = None,
         empty_path=None,
+        empty_rotational=False,
+        empty_reduction = 'mean',
         empty_projs: range = None,
         detector_rows: range = None,
         density_factor: float = None,
@@ -134,23 +153,17 @@ class Reconstruction:
         if ref_path is not None:
             if not ref_projs:
                 ref_projs = None  # use all projs for referencing (static)
-                if ref_mode == "reco":
+                if ref_rotational:
                     ref_projs = t_range  # reference one-on-one
             ref = load(ref_path, ref_projs, **load_kwargs)
             if dark is not None:
                 _apply_darkfields(dark, ref)
 
-            if ref_mode == "static":  # ref. is not rotational
-                ref = np.mean(ref, axis=0)
-            elif ref_mode == "reco":  # ref. is rotational
-                assert len(ref) == len(t_range)
-            elif ref_mode == "mode":
-                ref_reduced = np.zeros(ref.shape[1:], ref.dtype)
-                ref_reduced[..., detector_rows, :] = reference_via_mode(
-                    ref[..., detector_rows, :])
-                ref = ref_reduced
+            if not ref_rotational:
+                assert ref_reduction is not None
+                ref = self._reduce_ref(ref, ref_reduction, detector_rows)
             else:
-                raise NotImplementedError()
+                assert len(ref) == len(t_range)
 
             if density_factor is None:
                 density_factor = 1.0
@@ -159,13 +172,12 @@ class Reconstruction:
                     if dark is not None:
                         _apply_darkfields(dark, empty)
 
-                    if ref_mode == "static" or ref_mode == "mode":
-                        empty = np.mean(empty, axis=0)
-                    elif ref_mode == "reco":
-                        assert len(empty) == len(ref)
+                    if not empty_rotational:
+                        assert empty_reduction is not None
+                        empty = self._reduce_ref(empty, empty_reduction,
+                                                 detector_rows)
                     else:
-                        raise NotImplementedError()
-
+                        assert len(empty) == len(ref)
                     density_factor = compute_bed_density(
                         empty, ref, L=col_inner_diameter)
                 else:
