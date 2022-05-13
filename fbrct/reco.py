@@ -312,7 +312,6 @@ class AstraReconstruction(Reconstruction):
         max_constraint=None,
         **kwargs,
     ):
-
         vol_id, vol_geom = self.empty_volume_gpu(voxels_x)
 
         print("Algorithm starts...")
