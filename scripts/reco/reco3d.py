@@ -639,7 +639,10 @@ if __name__ == "__main__":
                 assert ref_max >= 1
                 ref.proj_end = min((ref.proj_start + ref_max, ref.proj_end))
             elif isinstance(ref, FluidizedBedScan):
-                ref.projs = range(ref.projs[0], ref.projs[0] + ref_max)
+                if ref.projs is None:
+                    ref.projs = range(ref_max)
+                else:
+                    ref.projs = range(ref.projs[0], ref.projs[0] + ref_max)
             else:
                 raise NotImplementedError(f"Don't know how to apply `ref_max` "
                                           f"to {ref}.")
