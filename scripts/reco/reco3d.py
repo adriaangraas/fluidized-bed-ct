@@ -122,7 +122,8 @@ def reconstruct(
     elif isinstance(scan, StaticScan):
         projs, geoms = _sino_static(scan, reconstructor,
                                     ref, plot=plot, **kwargs)
-        plot_projs(projs)
+        if plot:
+            plot_projs(projs)
         # vol_id, vol_geom = reco.backward(
         #     proj_id,
         #     proj_geom,
