@@ -422,7 +422,7 @@ def _inner_reco(
             "timeframe": t,
             "name": scan.name,
             "volume": x,
-            "geometry": proj_geom,
+            "geometry": geoms,
             "algorithm": algo,
             "nr_iters": iters,
             "vol_params": reco.vol_params(voxels_x),
