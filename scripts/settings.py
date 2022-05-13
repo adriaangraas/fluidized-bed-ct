@@ -495,7 +495,7 @@ _23_empty_static = StaticScan(
     f"{data_dir_23}/pre_proc_Empty_30degsec",
     proj_start=10,
     proj_end=1000,
-    is_full=True,
+    is_full=False,
     is_rotational=False,
     geometry=f"{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy",
     geometry_scaling_factor=1.0 / 1.0106333,
