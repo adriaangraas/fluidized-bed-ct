@@ -1,21 +1,23 @@
 import itertools
 import os
+import pathlib
 import re
 import warnings
 from typing import Sequence
 from joblib import Memory
 
 import numpy as np
-from tifffile import tifffile
-# import imageio
+# from tifffile import tifffile
+import imageio
 from tqdm import tqdm
 
 PROJECTION_FILE_REGEX = "camera ([1-3])/img_([0-9]{1,6})\.tif$"
 
-import pathlib
+# we use joblibs `Memory` to cache long results
 path = pathlib.Path(__file__).parent.resolve()
 cachedir = str(path.parent / "cache")
 memory = Memory(cachedir, verbose=0)
+
 
 def _collect_fnames(
     path: str,
@@ -59,6 +61,7 @@ def load(
     detector_rows: Sequence = None,
 ):
     """Load a stack of data from disk using a pattern."""
+
     results, results_filenames = _collect_fnames(path, regex)
     # Check the results for continuity in the subsequences range
     lists = list(zip(*results))
@@ -73,7 +76,7 @@ def load(
         time_range = range(np.min(lists[1]), np.max(lists[1]) + 1)
 
     # load into results
-    im_shape = list(tifffile.imread(results_filenames[0]).shape)
+    im_shape = list(imageio.v2.imread(results_filenames[0]).shape)
     if detector_rows is None:
         rows = slice(0, im_shape[0])
     else:
@@ -89,7 +92,6 @@ def load(
             nested_dict[cam_id][t] = filename
 
     # check if wanted timesteps are in the dict, and load them
-    arr = []
     for t_i, t in enumerate(tqdm(time_range)) if verbose else enumerate(
         time_range):
         for d_i, d in enumerate(nested_dict.keys()):
@@ -98,17 +100,17 @@ def load(
                     f"Could not find timestep {t} from "
                     f"detector {d} in directory {path}."
                 )
+            # faster but imageio may be easier to install
+            # ims[t_i, d_i, rows] = \
+            # tifffile.imread(nested_dict[d][t], maxworkers=1)[
             ims[t_i, d_i, rows] = \
-            tifffile.imread(nested_dict[d][t], maxworkers=1)[
-                detector_rows
-            ]
+                imageio.v2.imread(nested_dict[d][t])[detector_rows]
 
     return np.ascontiguousarray(ims)
 
 
 @memory.cache
 def reference_via_mode(data, qu=1, deg=20, nr_bins=100, nr_linspace=1000):
-    """For some reason `numpy` is faster (about 2x)."""
     xp = np
     data = xp.asarray(data)
 
@@ -121,8 +123,6 @@ def reference_via_mode(data, qu=1, deg=20, nr_bins=100, nr_linspace=1000):
     cams = range(data.shape[1])
     rows = range(qu, ref_mode.shape[-2] - qu)
     cols = range(ref_mode.shape[-1])
-    # rows = range(200, 300)  # handy for quick visualization
-    # cols = range(200, 300)
     total = len(rows) * len(cols) * len(cams)
     for cam, row, col in tqdm(itertools.product(cams, rows, cols),
                               total=total):
@@ -136,7 +136,6 @@ def reference_via_mode(data, qu=1, deg=20, nr_bins=100, nr_linspace=1000):
         bin_centers = bin_edges[:100] + bin_width / 2
 
         if xp != np:
-            # assuming its cupy
             import cupy as cp
             assert xp == cp
             with warnings.catch_warnings():
@@ -164,10 +163,6 @@ def reference_via_mode(data, qu=1, deg=20, nr_bins=100, nr_linspace=1000):
         # plt.axvline(x=mode_distr, color='r', linewidth=1)
         # plt.pause(1.)
 
-    # import matplotlib.pyplot as plt
-    # plt.figure()
-    # plt.imshow(ref_mode[0])
-    # plt.show()
     return ref_mode
 
 
@@ -189,12 +184,20 @@ def _apply_darkfields(dark, meas):
     return
 
 
-def compute_bed_density(empty, ref, L: float, nr_bins=1000) -> float:
-    # not the most efficient, but otherwise duplicated code
+def compute_bed_density(empty, ref, L: float, nr_bins=1000,
+                        max_bed_val=1.0) -> float:
+    """Computes the average bed density along a ray with length L, using an
+    empty column, histogram with `nr_bins` bins."""
+
     # computing log(ref/meas) / log(ref)
     # should be normalized between 0 and 1
     np.clip(empty, 1.0, None, out=empty)
     bed = np.log(empty / ref, where=ref != 0)
+
+    # This is an annoying value that I need to have in here, because sometimes
+    # pieces of metal appear in the bed and they have huge attenuation. In such
+    # case the modal value of the bed gets disturbed.
+    np.clip(bed, 0., max_bed_val, out=bed)
     _isfinite(bed)
 
     np.clip(bed, 0.0, None, out=bed)
@@ -224,15 +227,12 @@ def preprocess(
     dtype=np.float32,
     ref_lower_density=False,
 ):
+    """A simple implementation of Beer-Lambert with referencing
+
+    :type ref_lower_density: If we reconstruct bubbles, the reference is a full
+    column, and the log computation is inverted.
     """
 
-    :param meas: Projection images (unreferenced)
-    :param dark: Darks are always averaged, then subtracted from projs, refs
-    :param ref: Refs are always clipped from 0
-    :param dtype:
-    :param ref_lower_density:
-    :return:
-    """
     if ref is not None:
         if ref_lower_density:
             # we want to measure lower density, so need to multiply by -1
@@ -254,7 +254,7 @@ def preprocess(
 def projection_numbers(path, cam=None) -> list:
     """Returns projection numbers of camera `cam`."""
     if cam is None:
-        cam = 1  # TODO: check if results are consistent amongst cams?
+        cam = 1
 
     results, results_fnames = _collect_fnames(path)
     return sorted([r[1] for r in results if r[0] == cam])
