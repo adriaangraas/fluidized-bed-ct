@@ -3,25 +3,21 @@ import os
 from pathlib import Path
 from typing import Tuple, Callable
 
-import matplotlib.pyplot as plt
 import numpy as np
-import tifffile
+import imageio
 import warnings
 
 import scripts.settings as sett
-from fbrct import loader, reco, Scan, DynamicScan, StaticScan, FluidizedBedScan
+from fbrct import TraverseScan, loader, reco, Scan, DynamicScan, StaticScan, \
+    FluidizedBedScan
 from fbrct.reco import Reconstruction
 from fbrct.util import plot_projs
 
 
 def _reco(projs_dir: str, detector):
     """Generate a reconstruction object."""
-    return reco.RayveReconstruction(
-        projs_dir,
-        detector=detector,
-        expected_voxel_size_x=sett.APPROX_VOXEL_WIDTH,
-        expected_voxel_size_z=sett.APPROX_VOXEL_HEIGHT,
-    )
+    return reco.AstraReconstruction(projs_dir, detector=detector)
+    # return reco.AstrapyReconstruction(projs_dir, detector=detector)
 
 
 def _plot(x):
@@ -38,45 +34,52 @@ def reconstruct(
     scan: Scan,
     recodir: str,
     ref: Scan = None,
-    voxels_x: int = 300,
+    voxels: tuple = None,
+    voxel_size: float = None,
     plot: bool = False,
     iters: int = 200,
     locking=False,
     overwrite=False,
     save=False,
-    save_tiff=False,
     save_mat=False,
     algo="sirt",
     timeframes=None,
     detector_rows: range = None,
-    ref_reduction: str = None
+    ref_reduction: str = None,
+    angles=None
 ):
     print(f"Next up is {scan}...")
 
     def _callbackf(i, x, y_tmp):
         import matplotlib.pyplot as plt
 
-        # median_filter(x, size=3, output=x)
-        # footprint = cp.ones((1, 1, 3), dtype=cp.bool)
-        # median_filter(x, footprint=footprint, output=x)
-        if plot and i % 100 == 0:
-            # if i % 3 == 0:
-            # x[x < 0.001] = 0.
-            plt.figure("quick-3d")
-            for z in range(0, x.shape[2], 10):
-                plt.cla()
-                plt.imshow(x[..., z].get())
-                plt.pause(0.01)
+        if plot and i % 10 == 0:
+            plt.figure("projections")
+            plt.imshow(y_tmp[0].get())
+            plt.pause(1.001)
 
-            # plt.figure("MIP axis=1")
-            # plt.imshow(cp.max(x, axis=1).get().T)
-            # plt.pause(0.0001)
+        # # median_filter(x, size=3, output=x)
+        # # footprint = cp.ones((1, 1, 3), dtype=cp.bool)
+        # # median_filter(x, footprint=footprint, output=x)
+        # if plot and i % 100 == 0:
+        #     # if i % 3 == 0:
+        #     # x[x < 0.001] = 0.
+        #     plt.figure("quick-3d")
+        #     for z in range(0, x.shape[2], 10):
+        #         plt.cla()
+        #         plt.imshow(x[..., z].get())
+        #         plt.pause(0.01)
+        #
+        #     # plt.figure("MIP axis=1")
+        #     # plt.imshow(cp.max(x, axis=1).get().T)
+        #     # plt.pause(0.0001)
 
     reconstructor = _reco(scan.projs_dir, scan.detector)
 
     if isinstance(scan, DynamicScan):
         if scan.projs is None:
-            scan_projs = loader.projection_numbers(scan.projs_dir)  # all frames
+            scan_projs = loader.projection_numbers(
+                scan.projs_dir)  # all frames
         else:
             scan_projs = scan.projs
 
@@ -97,7 +100,16 @@ def reconstruct(
         # per-frame reconstruction:
         for t, sino_t in zip(timeframes, projs):
             if plot:
-                plot_projs(projs[0])
+                from plotting import plt, CM
+                ids = slice(detector_rows.start, detector_rows.stop)
+                plot_projs(
+                    projs[0, :, ids],
+                    # projs[0],
+                    subplot_row=True,
+                    figsize=(9 * CM, 7.0 * CM))
+                plt.savefig("projs.pdf")
+                plt.pause(10.)
+                plt.show()
 
             _inner_reco(
                 scan,
@@ -106,12 +118,12 @@ def reconstruct(
                 algo,
                 sino_t,
                 scan.geometry(),
-                voxels_x,
+                voxels,
+                voxel_size,
                 iters,
                 callbackf=_callbackf,
                 t=t,
                 save=save,
-                save_tiff=save_tiff,
                 save_mat=save_mat,
                 locking=locking,
                 overwrite=overwrite,
@@ -120,10 +132,17 @@ def reconstruct(
 
         reconstructor.clear()
     elif isinstance(scan, StaticScan):
-        projs, geoms = _sino_static(scan, reconstructor,
-                                    ref, plot=plot, **kwargs)
+        projs, geoms = _sino_static(
+            scan, reconstructor, ref,
+            angles=angles,
+            detector_rows=detector_rows,
+        )
         if plot:
-            plot_projs(projs)
+            from plotting import plt, CM
+            plot_projs(
+                projs[:, detector_rows],
+                figsize=(6 * CM, 7.0 * CM),
+                pause=100)
         # vol_id, vol_geom = reco.backward(
         #     proj_id,
         #     proj_geom,
@@ -141,7 +160,8 @@ def reconstruct(
             algo,
             projs,
             geoms,
-            voxels_x,
+            voxels,
+            voxel_size,
             iters,
             callbackf=_callbackf,
             locking=locking,
@@ -158,24 +178,18 @@ def _sino_dynamic(
     scan: Scan,
     reco: Reconstruction,
     ref: Scan,
-    ref_reduction: None,
+    ref_reduction: str = None,
     timeframes=None,
     **kwargs
 ):
-    """
-
-    Parameters
-    ----------
-    normalization : object
-    """
-
     if isinstance(ref, StaticScan):
         if issubclass(type(scan), FluidizedBedScan):
             assert (
                 not ref.is_rotational
             ), "Scan is fluidized bed, but reference is rotational?"
         else:
-            assert ref.is_rotational, "Scan is dynamic, but reference is static?"
+            if not issubclass(type(scan), TraverseScan):
+                assert ref.is_rotational, "Scan is dynamic, but reference is static?"
 
         ref_path = ref.projs_dir
         ref_lower_density = not ref.is_full
@@ -200,7 +214,7 @@ def _sino_dynamic(
         if not ref_reduction in ('mode',):
             warnings.warn("For fluidized bed scans, 'mode' is a good"
                           " reduction choice. Another option that might not"
-                          " introdce bubble bias is 'min', but this will cause"
+                          " introduce bubble bias is 'min', but this will cause"
                           " a density mismatch.")
         ref_rotational = ref.is_rotational
     else:
@@ -248,10 +262,10 @@ def _sino_static(
     scan: StaticScan,
     reco: Reconstruction,
     ref: Scan = None,
-    plot: bool = False,
+    ref_reduction: str = None,
     cameras: Tuple = None,
     angles=None,
-    normalization=None,
+    **kwargs
 ):
     if cameras is None:
         cameras = scan.cameras
@@ -268,27 +282,46 @@ def _sino_static(
             f" {scan.proj_start}-{scan.proj_end}."
         )
 
-    ref_projs = []
-    ref_path = None
-    ref_lower_density = None
-    ref_mode = "reco"
-    if ref is not None:
+    if isinstance(ref, StaticScan):
         ref_path = ref.projs_dir
         ref_lower_density = not ref.is_full
-        ref_mode = "reco" if ref.is_rotational else "static"
-        for a in angles:
-            ref_projs.append(a - scan.proj_start + ref.proj_start)
+        ref_projs = [a - scan.proj_start + ref.proj_start for a in angles]
+        ref_rotational = ref.is_rotational
 
-    ref_normalization_projs = []
-    ref_normalization_path = None
-    if normalization is not None:
+        if ref_reduction is None:
+            ref_reduction = 'mean'
+        if not ref_reduction in ('mean', 'median'):
+            warnings.warn("For static scans, 'mean' or 'medium' are good"
+                          " reduction choices.")
+    else:
+        ref_projs = []
+        ref_path = None
+        ref_lower_density = None
+        ref_rotational = False
+
+    empty_path = None
+    empty_projs = None
+    empty_rotational = False
+    if scan.density_factor is None:
         assert ref_path is not None
-        assert normalization.is_rotational
-        ref_normalization_path = normalization.projs_dir
-        for a in angles:
-            ref_normalization_projs.append(
-                a - scan.proj_start + normalization.proj_start
-            )
+        if scan.empty is not None:
+            empty_rotational = scan.empty.is_rotational
+            assert not scan.empty.is_full
+            empty_path = scan.empty.projs_dir
+            empty_projs = [a - scan.proj_start + scan.empty.proj_end
+                           for a in angles]
+
+    # ref_normalization_projs = []
+    # ref_normalization_path = None
+    # if normalization is not None:
+    #     assert ref_path is not None
+    #     assert normalization.is_rotational
+    #     ref_normalization_path = normalization.projs_dir
+    #     for a in angles:
+    #         ref_normalization_projs.append(
+    #             a - scan.proj_start + normalization.proj_start
+    #         )
+
     darks_ran = None
     darks_path = None
     if scan.darks is not None:
@@ -299,15 +332,18 @@ def _sino_static(
     for cam in cameras:
         sino = reco.load_sinogram(
             t_range=angles,
-            ref_rotational=ref_mode,
             cameras=(cam,),
             ref_path=ref_path,
             ref_projs=ref_projs,
+            ref_rotational=ref_rotational,
             darks_path=darks_path,
             darks_ran=darks_ran,
             ref_lower_density=ref_lower_density,
-            empty_path=ref_normalization_path,
-            empty_projs=ref_normalization_projs,
+            empty_path=empty_path,
+            empty_rotational=empty_rotational,
+            empty_projs=empty_projs,
+            col_inner_diameter=scan.col_inner_diameter,
+            **kwargs
         )
         sino = np.squeeze(sino, axis=0)
         # sino = np.transpose(sino, [1, 0, 2])
@@ -315,9 +351,6 @@ def _sino_static(
 
     # concat 3 cams into 1
     sino_flat = np.concatenate(sinos, axis=0)
-
-    if plot:
-        plot_projs(sino_flat)
 
     scan._geometry_rotation_offset = np.pi / 6
     geom_flat = np.array(
@@ -339,14 +372,14 @@ def _inner_reco(
     algo: str,
     sino,
     geoms,
-    voxels_x,
+    voxels,
+    voxel_size,
     iters: int,
     t: int = None,
     callbackf: Callable = None,
     locking: bool = False,
     overwrite: bool = False,
     save: bool = False,
-    save_tiff: bool = False,
     save_mat: bool = False,
     min_constraint: float = 0.0,
     max_constraint: float = 1.0,
@@ -365,7 +398,8 @@ def _inner_reco(
             )
         else:
             return os.path.join(
-                recodir, scan.name, f"size_{voxels_x}_algo_{algo}_iters_{iters}.{ext}"
+                recodir, scan.name,
+                f"size_{voxels_x}_algo_{algo}_iters_{iters}.{ext}"
             )
 
     # sino[0, ...] = np.mean(sino, axis=0)  # hacky averaging projs
@@ -409,7 +443,8 @@ def _inner_reco(
             proj_id,
             proj_geom,
             algo=algo,
-            voxels_x=voxels_x,
+            voxels=voxels,
+            voxel_size=voxel_size,
             iters=iters,
             min_constraint=min_constraint,
             max_constraint=max_constraint,
@@ -418,6 +453,7 @@ def _inner_reco(
         )
         x = reco.volume(vol_id)
 
+        w, h = voxels[0] * voxel_size / 2, voxels[2] / voxel_size / 2
         infodict = {
             "timeframe": t,
             "name": scan.name,
@@ -425,18 +461,19 @@ def _inner_reco(
             "geometry": geoms,
             "algorithm": algo,
             "nr_iters": iters,
-            "vol_params": reco.vol_params(voxels_x),
-        }
+            "vol_params": [  # for backwards compatibility
+                voxels,
+                [-w, -w, -h],
+                [w, w, h],
+                [voxel_size] * 3
+        ]}
 
         print(f"Saving {filename}...")
-        if save or save_mat or save_tiff:
+        if save or save_mat:
             os.makedirs(os.path.dirname(filename), exist_ok=True)
 
         if save:
             np.save(filename, infodict, allow_pickle=True)
-
-        if save_tiff:
-            tifffile.imsave(_fname("tiff", t), x, x.shape)
 
         if save_mat:
             from scipy.io import savemat
@@ -460,29 +497,33 @@ def _inner_reco(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Reconstruction")
+    parser = argparse.ArgumentParser(
+        description="This script allows an organized way of reconstructing"
+                    " fluidized beds, given the scans in settings.py.")
 
     parser.add_argument(
         "--scan",
         type=str,
         help="Name of the Scan to run."
-        " Must be available in settings.py. Runs"
-        " all SCANS from settings.py if not provided.",
+             " Must be available in settings.py. Runs"
+             " all SCANS from settings.py if not provided.",
         default="all",
     )
     parser.add_argument(
         "--ref",
         type=str,
         help="Name of the reference scan."
-        " Must be available in settings.py. If not "
-        " given, will use `scan.references[0]`.",
+             " Must be available in settings.py. If not "
+             " given, will use `scan.references[0]`.",
         default=None,
     )
     parser.add_argument(
-        "--recodir", type=str, help="directory to store reconstructions", default="./"
+        "--recodir", type=str, help="directory to store reconstructions",
+        default="./"
     )
     parser.add_argument(
-        "--algo", type=str, help="Algorithm to use (sirt, fdk, nesterov)", default=None
+        "--algo", type=str, help="Algorithm to use (sirt, fdk, nesterov)",
+        default=None
     )
     parser.add_argument(
         "--iters",
@@ -491,10 +532,26 @@ if __name__ == "__main__":
         default=None,
     )
     parser.add_argument(
-        "--backend", type=str, help="Backend to use (astra, rayve)", default="rayve"
+        "--cam", type=int, help="Reconstructs with a single camera.",
+        default=None
     )
     parser.add_argument(
-        "--cam", type=int, help="Reconstructs with a single camera.", default=None
+        "--voxels-x",
+        type=int,
+        help="Number of voxels in one dimension of the horizontal plane.",
+        default=300,
+    )
+    parser.add_argument(
+        "--voxels-z",
+        type=int,
+        help="Number of voxels in one dimension of the horizontal plane.",
+        default=850,
+    )
+    parser.add_argument(
+        "--voxel-size",
+        type=float,
+        help="Isotropic voxel size (cm)",
+        default=0.018,
     )
     parser.add_argument(
         "--time",
@@ -544,7 +601,6 @@ if __name__ == "__main__":
 
     parser.add_argument("--plot", "--p", action="store_true", default=False)
     parser.add_argument("--save", "--s", action="store_true", default=False)
-    parser.add_argument("--save-tiff", action="store_true", default=False)
     parser.add_argument("--save-mat", action="store_true", default=False)
     parser.add_argument("--locking", action="store_true", default=False)
     parser.add_argument("--overwrite", action="store_true", default=False)
@@ -555,6 +611,9 @@ if __name__ == "__main__":
     algo = args.algo
     iters = args.iters
     recodir = args.recodir
+    voxels_x = args.voxels_x
+    voxels_z = args.voxels_z
+    voxel_size = args.voxel_size
     time = args.time
     time_start = args.time_start
     time_end = args.time_end
@@ -562,7 +621,6 @@ if __name__ == "__main__":
     cam = args.cam
     plot = args.plot
     save = args.save
-    save_tiff = args.save_tiff
     save_mat = args.save_mat
     locking = args.locking
     overwrite = args.overwrite
@@ -571,6 +629,8 @@ if __name__ == "__main__":
     ref_reduction = args.ref_reduction
 
     if plot:
+        from plotting import plt
+
         plt.rcParams.update({"figure.raise_window": False})
 
     if name != "all":
@@ -580,13 +640,15 @@ if __name__ == "__main__":
     else:
         scans = sett.SCANS
 
-    kwargs = {"plot": plot, "locking": locking, "save": save,
-              "overwrite": overwrite, 'save_tiff': save_tiff,
-              'save_mat': save_mat, 'ref_reduction': ref_reduction}
+    _kwargs = {"plot": plot, "locking": locking, "save": save,
+               "overwrite": overwrite,
+               'save_mat': save_mat, 'ref_reduction': ref_reduction,
+               'voxels': [voxels_x, voxels_x, voxels_z],
+               'voxel_size': voxel_size}
     if algo is not None:
-        kwargs["algo"] = algo
+        _kwargs["algo"] = algo
     if iters is not None:
-        kwargs["iters"] = iters
+        _kwargs["iters"] = iters
 
     times = None
     if time is not None:
@@ -596,15 +658,15 @@ if __name__ == "__main__":
         assert time is None and time_end > time_start
         times = [t for t in range(time_start, time_end)]
 
-    kwargs["timeframes"] = times
+    _kwargs["timeframes"] = times
 
     if cam is not None:
-        kwargs["cameras"] = [cam]
+        _kwargs["cameras"] = [cam]
     if angle is not None:
-        kwargs["angles"] = [angle]
+        _kwargs["angles"] = [angle]
     if detector_rows is not None:
         assert 0 <= detector_rows[0] < detector_rows[1]
-        kwargs["detector_rows"] = range(detector_rows[0], detector_rows[1])
+        _kwargs["detector_rows"] = range(detector_rows[0], detector_rows[1])
 
     for scan in scans:
         if refname is None:
@@ -661,4 +723,4 @@ if __name__ == "__main__":
                 raise NotImplementedError(f"Don't know how to apply `ref_max` "
                                           f"to {scan.empty}.")
 
-        reconstruct(scan, recodir, ref, **kwargs)
+        reconstruct(scan, recodir, ref, **_kwargs)

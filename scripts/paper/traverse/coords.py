@@ -1,7 +1,7 @@
 import argparse
 import itertools
-import os
 import warnings
+import numpy as np
 
 import scipy.signal
 

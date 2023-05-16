@@ -75,8 +75,8 @@ def triangle_geom(
         det = det_rad * np.array([np.cos(det_a), np.sin(det_a), 0])
         if i == 0 and fix_first_det:
             print("Fixing first detector.")
-            geom = xray.StaticGeometry(
-                source=VectorParameter(src, weight_decay=weight_decay),
+            geom = xray.Geometry(
+                source=VectorParameter(src),
                 # source=src,
                 detector=det,
                 roll=None,
@@ -84,9 +84,9 @@ def triangle_geom(
                 yaw=None,
             )
         else:
-            geom = xray.StaticGeometry(
-                source=VectorParameter(src, weight_decay=weight_decay),
-                detector=VectorParameter(det, weight_decay=weight_decay),
+            geom = xray.Geometry(
+                source=VectorParameter(src),
+                detector=VectorParameter(det),
                 roll=ScalarParameter(None),
                 pitch=ScalarParameter(None),
                 yaw=ScalarParameter(None),

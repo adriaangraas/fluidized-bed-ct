@@ -1,11 +1,7 @@
-import matplotlib.pyplot as plt
 import numpy as np
 import scipy.stats
-
+from plotting import CM, COLUMNWIDTH, plt
 from fbrct import loader
-from settings import *
-
-plt.rcParams.update({'figure.raise_window': False})
 
 
 def _do_stats(pixels: np.ndarray, plot=False):
@@ -29,7 +25,7 @@ data_dir_24 = "/export/scratch3/adriaan/evert/data/2021-08-24"
 projs_dir = f'{data_dir_24}/pre_proc_10mm_23mm_foamballs_horizontal'
 # projs_dir = f'{data_dir_24}/pre_proc_3x10mm_foamballs_vertical_wall'
 # full_dir = f'{data_dir_23}/pre_proc_Full_30degsec'
-full_dir = f'{data_dir_24}/pre_proc_Full_30degsec'
+full_dir = f'{data_dir_24}/pre_proc_Full_30degsec'  # note, static before 1000
 # empty_dir = f'{data_dir_23}/pre_proc_Empty_30degsec'
 empty_dir = f'{data_dir_24}/pre_proc_Empty_30degsec'
 darks_dir = f'{data_dir_24}/pre_proc_Dark'
@@ -82,12 +78,39 @@ from numpy.polynomial import Polynomial
 rows = (1000,)
 # rows = (100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100)
 col = refs[0].shape[3] // 2
-exps = (0, 2, 3)
-labels = ('19 L/min', '22 L/min', '25 L/min')
+exps = (0, 1, 2, 3)
+def superficial_velocity(lmin, rad=5.0 / 2):
+    Q = lmin * 10 * 10 * 10 / 60  # cm^3 per second
+    A = np.pi * rad**2  # cm^2
+    return int(np.round(Q / A, 0)) # speed in cm / s
+
+
+labels = (str(superficial_velocity(19)) + ' cm/s',
+          str(superficial_velocity(20)) + ' cm/s',
+          str(superficial_velocity(22)) + ' cm/s',
+          str(superficial_velocity(25)) + ' cm/s')
 qu = 3
-# plt.figure(1)
-plt.figure(2)
 i = 0
+
+mus = []
+wus = []
+lbls = []
+for c in (0,):
+    for p1 in rows:
+        p2 = col
+        wu = full[:, c, p1 - qu:p1 + qu + 1, p2].flatten()
+        hist, bin_edges = np.histogram(wu, bins=100,
+                                       # range=(5500, 5600),
+                                       density=True)
+        bin_width = bin_edges[1] - bin_edges[0]
+        bin_centers = bin_edges[:100] + bin_width / 2
+        pol = Polynomial.fit(bin_centers, hist, deg=20)
+        xx, yy = pol.linspace(1000)
+        mu = xx[np.argmax(yy)]
+        mus.append(mu)
+        wus.append(wu)
+        lbls.append(f"0 cm/s - {int(np.round(mu))} counts")
+
 for x in exps:
     for c in (0,):
         # for p1 in range(qu, ref_mean.shape[-2] - qu):
@@ -107,24 +130,51 @@ for x in exps:
             # plt.figure(1)
             # plt.plot(xx, yy, label=p1)
 
-            plt.figure(2)
+            # plt.figure(2)
+            lbl = f"{labels[i]} - {int(np.round(mu))} counts"
             # plt.plot(xx, yy, color='black')
-            plt.hist(wu, bins=100, range=(5500, 7500), density=True,
-                     label=f"{labels[i]} - {int(np.round(mu))} photons")
+            # plt.hist(wu, bins=100, range=(5500, 7500), density=True,
+            #          label=lbl)
+            # plt.plot(xx, yy, label=lbl)
+            mus.append(mu)
+            wus.append(wu)
+            lbls.append(lbl)
             i += 1
 
-            plt.axvline(x=mu, color='r', linewidth=1)
+colors = ['k']
+colors += plt.rcParams['axes.prop_cycle'].by_key()['color'][:len(mus) - 1]
 
-            print(mu)
+plt.figure(2, figsize=(COLUMNWIDTH * CM, 5.0 * CM))
+plt.cla()
+plt.ylim(0, 0.004)
+for mu, color in zip(mus, colors):
+    plt.axvline(x=mu, color=color, linewidth=1.5, linestyle='-', alpha=1.0)
 
-plt.xlabel('Photon count')
+plt.hist(
+    wus,
+    histtype='step',
+    bins=100,
+    range=(5500, 7500),
+    density=True,
+    label=lbls,
+    color=colors,
+    alpha=0.7
+)
+
+# mean
+# plt.axvline(x=full_mean[0, 1000, 275],
+#             color='k', linewidth=1.5, linestyle='-', alpha=1.0,
+#             label=f'0 L/min - {int(np.round(full_mean[0, rows[0], col]))} counts')
+
+plt.xlabel('Detector count')
 plt.ylabel('Probability density')
-plt.legend(frameon=False)
+ax = plt.gca()
+handles, labels = ax.get_legend_handles_labels()
+plt.legend(reversed(handles), reversed(labels), frameon=False)
 plt.tight_layout()
-# Save figure
-plt.savefig('reference_packing.png', dpi=300,
-            bbox_inches='tight')
+plt.savefig('reference_packing.pdf', bbox_inches='tight')
 plt.show()
+plt.pause(1.0)
 
 row = 600
 col = 300
@@ -181,7 +231,6 @@ plt.imshow(meas_ref[0, 0] - ref_mean[0])
 
 full_mean_x = np.copy(full_mean)
 full_mean_x[0, 625] = np.average(full_mean_x[0, 575:675], axis=0)
-
 
 def _alpha(a, b, c=1.):
     plt.figure()

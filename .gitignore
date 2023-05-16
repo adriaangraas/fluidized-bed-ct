@@ -1,5 +1,8 @@
 # Project-specific files
 out/*
+data/*
+cache/*
+scripts/paper/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

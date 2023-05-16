@@ -1,12 +1,7 @@
 from cate import annotate, astra
-from cate.xray import (
-    StaticGeometry,
-    crop_detector,
-    shift,
-    transform,
-)
+from cate.xray import Geometry, shift, transform
+from cate.astra import Detector, crop_detector
 from settings import *
-
 from scripts.calibration.util import *
 
 run_annotation = False
@@ -54,10 +49,12 @@ def triple_camera_circular_geometry(
     source_positions: Sequence,
     detector_positions: Sequence,
     angles: Sequence,
-    weight_decay=None,
     optimize_rotation=False,
 ):
     """
+    This function retunrns Geometry objects with free parameters, so that
+    these can be optimized.
+
     Parameters:
      - each source and detector has a free position, and detector has RPY
       - with exception from detector 1, this is fixed.
@@ -77,8 +74,8 @@ def triple_camera_circular_geometry(
     # The first cam needs is totally fixed, to prevent arbitrary shifts
     # in the solution.
     initial_geoms = [
-        StaticGeometry(
-            source=VectorParameter(source_positions[0], weight_decay=weight_decay),
+        Geometry(
+            source=VectorParameter(source_positions[0]),
             detector=detector_positions[0],
             roll=None,  # are computed automatically, from src and det
             pitch=None,
@@ -87,11 +84,9 @@ def triple_camera_circular_geometry(
     ]
     for i in range(1, nr_cams):
         initial_geoms.append(
-            StaticGeometry(
-                source=VectorParameter(source_positions[i], weight_decay=weight_decay),
-                detector=VectorParameter(
-                    detector_positions[i], weight_decay=weight_decay
-                ),
+            Geometry(
+                source=VectorParameter(source_positions[i]),
+                detector=VectorParameter(detector_positions[i]),
                 roll=ScalarParameter(None),
                 pitch=ScalarParameter(None),
                 yaw=ScalarParameter(None),
@@ -100,7 +95,7 @@ def triple_camera_circular_geometry(
 
     # the whole set-up can be arbitrarily shifted and rotated in space
     # but while keeping sources and detectors relatively fixed
-    shift_param = VectorParameter(np.array([0.0, 0.0, 0.0]), weight_decay=weight_decay)
+    shift_param = VectorParameter(np.array([0.0, 0.0, 0.0]))
     initial_geoms = [shift(g, shift_param) for g in initial_geoms]
     roll_param, pitch_param, yaw_param = [ScalarParameter(0.0) for _ in range(3)]
     initial_geoms = [
@@ -125,7 +120,7 @@ def triple_camera_circular_geometry(
     return geoms
 
 
-detector = xray.Detector(
+detector = Detector(
     DETECTOR_ROWS, DETECTOR_COLS, DETECTOR_PIXEL_WIDTH, DETECTOR_PIXEL_HEIGHT
 )
 
@@ -180,6 +175,7 @@ t_range = range(proj_start, proj_start + nr_projs, 6)
 for t in t_annotated:
     assert proj_start <= t < proj_end, f"{t} is not within proj start-end."
 
+# launch the annotation tool
 multicam_data = annotated_data(
     projs_path,
     t_annotated,  # any frame will probably do
@@ -199,7 +195,6 @@ astra.pixels2coords(multicam_data, detector)
 pre_geoms = triangle_geom(SOURCE_RADIUS, DETECTOR_RADIUS, rotation=False, shift=False)
 srcs = [g.source for g in pre_geoms]
 dets = [g._detector for g in pre_geoms]
-
 angles = (np.array(t_annotated) - proj_start) / nr_projs * 2 * np.pi
 multicam_geom = triple_camera_circular_geometry(srcs, dets, angles=angles)
 
