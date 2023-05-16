@@ -8,6 +8,8 @@ def _manual_geometry(
     cams=(1, 2, 3),
     nr_projs=1,
 ):
+    """Generate a geometry from manual calibrated values."""
+
     from cate import xray, astra
 
     assert isinstance(detector, xray.Detector)
@@ -34,7 +36,7 @@ def _manual_geometry(
 
     geoms_all_cams = []
     for c, cam in enumerate(cams):
-        geom = xray.StaticGeometry(
+        geom = xray.Geometry(
             source=np.array([MANUAL_SOURE_RADIUS[c], 0.0, 0.0]),
             detector=np.array([-MANUAL_DET_RADIUS[c], 0.0, 0.0]),
         )
@@ -54,9 +56,12 @@ def _manual_geometry(
     return geoms_all_cams
 
 
-def cate_to_astra(path, det, geom_scaling_factor=None):
+def cate_to_astra(path, det, geom_scaling_factor=None, angles=None):
+    """Convert `Geometry` objects from our calibration package to the
+    ASTRA vector convention."""
+
     import pickle
-    from cate import astra
+    from cate import astra, xray
     from numpy.lib.format import read_magic, _check_version, _read_array_header
 
     class RenamingUnpickler(pickle.Unpickler):
@@ -72,20 +77,34 @@ def cate_to_astra(path, det, geom_scaling_factor=None):
         assert dtype.hasobject
         multicam_geom = RenamingUnpickler(fp).load()[0]
 
-    # multicam_geom = np.load(path, allow_pickle=True)[0]
     detector = astra.Detector(
         det["rows"], det["cols"], det["pixel_width"], det["pixel_height"]
     )
-    geoms = []
-    for cam, g in sorted(multicam_geom.items()):
+
+    def _to_astra_vec(g):
         v = astra.geom2astravec(g, detector.todict())
         if geom_scaling_factor is not None:
             v = np.array(v) * geom_scaling_factor
-        geoms.append(v)
-    return geoms
+        return v
+
+    if angles is None:
+        geoms = []
+        for _, g in sorted(multicam_geom.items()):
+            geoms.append(_to_astra_vec(g))
+        return geoms
+    else:
+        geoms_all_cams = {}
+        for cam in list(multicam_geom.keys()):
+            geoms = []
+            for a in angles:
+                g = xray.transform(multicam_geom[cam], yaw=a)
+                geoms.append(_to_astra_vec(g))
+            geoms_all_cams[cam] = geoms
+
+        return geoms_all_cams
 
 
-def astra_to_rayve(vectors):
+def astra_to_astrapy(vectors, det):
     from astrapy.geom import Geometry, Detector
 
     geoms = []
@@ -98,10 +117,10 @@ def astra_to_rayve(vectors):
             u_unit=u / np.linalg.norm(u),
             v_unit=v / np.linalg.norm(v),
             detector=Detector(
-                rows=DETECTOR_ROWS,
-                cols=DETECTOR_COLS,
-                pixel_width=DETECTOR_PIXEL_WIDTH,
-                pixel_height=DETECTOR_PIXEL_HEIGHT,
+                rows=det['rows'],
+                cols=det['cols'],
+                pixel_width=det['pixel_width'],
+                pixel_height=det['pixel_height'],
             ),
         )
         geoms.append(geom)
@@ -213,41 +232,22 @@ class StaticScan(Scan):
         return self.proj_end - self.proj_start
 
     def geometry(self):
-        from cate import xray, astra
-
-        detector = xray.Detector(
-            self._detector["rows"],
-            self._detector["cols"],
-            self._detector["pixel_width"],
-            self._detector["pixel_height"],
-        )
-
         if self._geometry_manual is True:
             return _manual_geometry(self.cameras, self.nr_projs)
 
-        multicam_geom = np.load(self._geometry, allow_pickle=True)[0]
-        geoms_all_cams = {}
+        ang_increment = 2 * np.pi / self.nr_projs if self.is_rotational else 0.0
+        angles = [self._geometry_rotation_offset + i * ang_increment
+                           for i in range(self.nr_projs)]
 
-        for cam in self.cameras:
-            geoms = []
-            ang_increment = 2 * np.pi / self.nr_projs if self.is_rotational else 0.0
-            for i in range(self.nr_projs):
-                g = xray.transform(
-                    multicam_geom[cam],
-                    yaw=self._geometry_rotation_offset + i * ang_increment,
-                )
-                v = astra.geom2astravec(g, detector.todict())
-                if self._geometry_scaling_factor is not None:
-                    v = np.array(v) * self._geometry_scaling_factor
-
-                geoms.append(v)
-
-            geoms_all_cams[cam] = geoms
-
-        return geoms_all_cams
+        return cate_to_astra(self._geometry,
+                             self.detector,
+                             self._geometry_scaling_factor,
+                             angles=angles)
 
 
 class DynamicScan(Scan):
+    """The scanned object changes over time."""
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
