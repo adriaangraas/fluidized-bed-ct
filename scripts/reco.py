@@ -1,10 +1,9 @@
 import argparse
 import os
 from pathlib import Path
-from typing import Tuple, Callable
+from typing import Tuple
 
 import numpy as np
-import imageio
 import warnings
 
 import scripts.settings as sett
@@ -12,12 +11,6 @@ from fbrct import TraverseScan, loader, reco, Scan, DynamicScan, StaticScan, \
     FluidizedBedScan
 from fbrct.reco import Reconstruction
 from fbrct.util import plot_projs
-
-
-def _reco(projs_dir: str, detector):
-    """Generate a reconstruction object."""
-    return reco.AstraReconstruction(projs_dir, detector=detector)
-    # return reco.AstrapyReconstruction(projs_dir, detector=detector)
 
 
 def _plot(x):
@@ -50,36 +43,13 @@ def reconstruct(
 ):
     print(f"Next up is {scan}...")
 
-    def _callbackf(i, x, y_tmp):
-        import matplotlib.pyplot as plt
-
-        if plot and i % 10 == 0:
-            plt.figure("projections")
-            plt.imshow(y_tmp[0].get())
-            plt.pause(1.001)
-
-        # # median_filter(x, size=3, output=x)
-        # # footprint = cp.ones((1, 1, 3), dtype=cp.bool)
-        # # median_filter(x, footprint=footprint, output=x)
-        # if plot and i % 100 == 0:
-        #     # if i % 3 == 0:
-        #     # x[x < 0.001] = 0.
-        #     plt.figure("quick-3d")
-        #     for z in range(0, x.shape[2], 10):
-        #         plt.cla()
-        #         plt.imshow(x[..., z].get())
-        #         plt.pause(0.01)
-        #
-        #     # plt.figure("MIP axis=1")
-        #     # plt.imshow(cp.max(x, axis=1).get().T)
-        #     # plt.pause(0.0001)
-
-    reconstructor = _reco(scan.projs_dir, scan.detector)
+    reconstructor = reco.AstraReconstruction(
+        scan.projs_dir,
+        detector=scan.detector)
 
     if isinstance(scan, DynamicScan):
         if scan.projs is None:
-            scan_projs = loader.projection_numbers(
-                scan.projs_dir)  # all frames
+            scan_projs = loader.projection_numbers(scan.projs_dir)
         else:
             scan_projs = scan.projs
 
@@ -100,11 +70,13 @@ def reconstruct(
         # per-frame reconstruction:
         for t, sino_t in zip(timeframes, projs):
             if plot:
-                from plotting import plt, CM
-                ids = slice(detector_rows.start, detector_rows.stop)
+                from fbrct.plotting import plt, CM
+                if detector_rows is not None:
+                    ids = slice(detector_rows.start, detector_rows.stop)
+                else:
+                    ids = slice(None, None)
                 plot_projs(
                     projs[0, :, ids],
-                    # projs[0],
                     subplot_row=True,
                     figsize=(9 * CM, 7.0 * CM))
                 plt.savefig("projs.pdf")
@@ -121,7 +93,6 @@ def reconstruct(
                 voxels,
                 voxel_size,
                 iters,
-                callbackf=_callbackf,
                 t=t,
                 save=save,
                 save_mat=save_mat,
@@ -138,21 +109,12 @@ def reconstruct(
             detector_rows=detector_rows,
         )
         if plot:
-            from plotting import plt, CM
+            from fbrct.plotting import plt, CM
             plot_projs(
                 projs[:, detector_rows],
                 figsize=(6 * CM, 7.0 * CM),
                 pause=100)
-        # vol_id, vol_geom = reco.backward(
-        #     proj_id,
-        #     proj_geom,
-        #     algo=algo,
-        #     voxels_x=voxels_x,
-        #     iters=iters,
-        #     min_constraint=0.,
-        #     max_constraint=1.,
-        #     callback=callbackf)
-        # x = reco.volume(vol_id)
+
         _inner_reco(
             scan,
             reconstructor,
@@ -163,7 +125,6 @@ def reconstruct(
             voxels,
             voxel_size,
             iters,
-            callbackf=_callbackf,
             locking=locking,
             overwrite=overwrite,
             save=save,
@@ -291,7 +252,7 @@ def _sino_static(
         if ref_reduction is None:
             ref_reduction = 'mean'
         if not ref_reduction in ('mean', 'median'):
-            warnings.warn("For static scans, 'mean' or 'medium' are good"
+            warnings.warn("For static scans, 'mean' or 'median' are good"
                           " reduction choices.")
     else:
         ref_projs = []
@@ -310,17 +271,6 @@ def _sino_static(
             empty_path = scan.empty.projs_dir
             empty_projs = [a - scan.proj_start + scan.empty.proj_end
                            for a in angles]
-
-    # ref_normalization_projs = []
-    # ref_normalization_path = None
-    # if normalization is not None:
-    #     assert ref_path is not None
-    #     assert normalization.is_rotational
-    #     ref_normalization_path = normalization.projs_dir
-    #     for a in angles:
-    #         ref_normalization_projs.append(
-    #             a - scan.proj_start + normalization.proj_start
-    #         )
 
     darks_ran = None
     darks_path = None
@@ -346,7 +296,6 @@ def _sino_static(
             **kwargs
         )
         sino = np.squeeze(sino, axis=0)
-        # sino = np.transpose(sino, [1, 0, 2])
         sinos.append(sino)
 
     # concat 3 cams into 1
@@ -376,7 +325,6 @@ def _inner_reco(
     voxel_size,
     iters: int,
     t: int = None,
-    callbackf: Callable = None,
     locking: bool = False,
     overwrite: bool = False,
     save: bool = False,
@@ -448,12 +396,10 @@ def _inner_reco(
             iters=iters,
             min_constraint=min_constraint,
             max_constraint=max_constraint,
-            col_mask=True,
-            callback=callbackf,
-        )
+            col_mask=True)
         x = reco.volume(vol_id)
 
-        w, h = voxels[0] * voxel_size / 2, voxels[2] / voxel_size / 2
+        w, h = voxels[0] * voxel_size / 2, voxels[2] * voxel_size / 2
         infodict = {
             "timeframe": t,
             "name": scan.name,
@@ -466,7 +412,7 @@ def _inner_reco(
                 [-w, -w, -h],
                 [w, w, h],
                 [voxel_size] * 3
-        ]}
+            ]}
 
         print(f"Saving {filename}...")
         if save or save_mat:
@@ -502,12 +448,11 @@ if __name__ == "__main__":
                     " fluidized beds, given the scans in settings.py.")
 
     parser.add_argument(
-        "--scan",
+        "scan",
         type=str,
         help="Name of the Scan to run."
              " Must be available in settings.py. Runs"
-             " all SCANS from settings.py if not provided.",
-        default="all",
+             " all SCANS from settings.py if not provided."
     )
     parser.add_argument(
         "--ref",
@@ -629,14 +574,15 @@ if __name__ == "__main__":
     ref_reduction = args.ref_reduction
 
     if plot:
-        from plotting import plt
+        from fbrct.plotting import plt
 
         plt.rcParams.update({"figure.raise_window": False})
 
     if name != "all":
         scans = sett.get_scans(name)
         if len(scans) == 0:
-            raise ValueError(f"Scan {name} not found.")
+            raise ValueError(f"Scan {name} not found in "
+                             f"{[s.name for s in sett.SCANS]}.")
     else:
         scans = sett.SCANS
 
