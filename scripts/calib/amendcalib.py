@@ -3,7 +3,7 @@ import copy
 from cate.xray import StaticGeometry, XrayOptimizationProblem, \
     crop_detector, shift, transform
 from cate import annotate, astra
-from scripts.calibration.util import *
+from scripts.calib.util import *
 from settings import *
 from util import run_initial_marker_optimization
 

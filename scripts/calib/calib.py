@@ -2,7 +2,7 @@ from cate import annotate, astra
 from cate.xray import Geometry, shift, transform
 from cate.astra import Detector, crop_detector
 from settings import *
-from scripts.calibration.util import *
+from scripts.calib.util import *
 
 run_annotation = False
 run_optimalization = True
