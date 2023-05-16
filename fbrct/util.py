@@ -1,41 +1,5 @@
-import matplotlib.pyplot as plt
-import matplotlib.ticker as tick
+from fbrct.plotting import plt
 import numpy as np
-
-
-def plot_projlines(projs, colors, labels, pixel_width, pause=5.0):
-    import matplotlib.pyplot as plt
-
-    plt.style.use("dark_background")
-    plt.figure()
-    plt.title("Noise profile on Detector 1")
-
-    def x_fmt(x, y):
-        return "{:.0f}".format(x * pixel_width)
-
-    s = projs[0].shape[-1] // 2
-    ss = slice(projs[0].shape[-2] // 2 - 200, projs[0].shape[-2] // 2 + 200)
-
-    for i, (line, color, label) in enumerate(zip(projs, colors, labels)):
-        plt.plot(line[..., ss, s], color=color, label=label)
-        # ax.set_title(f"Camera {i+1}")
-        # im = ax.imshow(p[pixel_start:pixel_end],
-        #                vmin=0.,
-        #                vmax=np.max(projs[:, pixel_start:pixel_end]))
-        #
-        # # ax.invert_yaxis()
-
-    ax = plt.gca()
-    ax.xaxis.set_major_locator(plt.MultipleLocator(1.0 / pixel_width))  # cm
-    ax.xaxis.set_minor_locator(plt.MultipleLocator(1.0 / pixel_width / 10))  # cm
-
-    ax.xaxis.set_major_formatter(tick.FuncFormatter(x_fmt))
-    # ax.set_aspect('equal')
-    ax.set(xlabel="Width (cm)", ylabel="Preprocessed measurement")
-    ax.label_outer()
-    plt.tight_layout()
-    plt.legend()
-    plt.pause(pause)
 
 
 def plot_projs(
@@ -45,9 +9,11 @@ def plot_projs(
     row_start: int = None,
     row_end: int = None,
     pause=1.0,
+    figsize=None,
+    with_colorbar=False,
+    vmax=3.5,
+    subplot_row=False
 ):
-    import matplotlib.pyplot as plt
-
     assert projs.ndim == 3
 
     if row_start is None:
@@ -55,11 +21,17 @@ def plot_projs(
     if row_end is None:
         row_end = projs.shape[1]
 
-    plt.style.use("dark_background")
-    subplt_shape = (
-        (len(projs),) if projs.shape[2] > projs.shape[1] else (1, (len(projs)))
-    )
-    fig, axs = plt.subplots(*subplt_shape)
+    if subplot_row:
+        subplt_shape = (
+            (1, len(projs),) if projs.shape[1] > projs.shape[2]
+            else (len(projs), 1)
+        )
+    else:
+        subplt_shape = (
+            (len(projs),) if projs.shape[2] > projs.shape[1] else (len(projs), 1)
+        )
+
+    fig, axs = plt.subplots(*subplt_shape, figsize=figsize)
 
     def x_fmt(x, y):
         return "{:.0f}".format(x * pixel_width)
@@ -68,47 +40,54 @@ def plot_projs(
         return "{:.0f}".format(x * pixel_height + row_start * pixel_height)
 
     for i, (ax, p) in enumerate(zip(axs, projs)):
-        ax.set_title(f"Camera {i+1}")
+        # ax.set_title(f"Camera {i+1}",
+        #                      rotation='vertical',
+        #                      x=-.15, y=.25)
+        if subplot_row:
+            ax.set_title(f"Detector {i+1}")
+        else:
+            ax.set_ylabel(f"Detector {i+1}")
+
+
         im = ax.imshow(
             p[row_start:row_end],
             vmin=0.0,
-            vmax=np.max(projs[:, row_start:row_end]),
+            vmax=vmax,
+            cmap='gray_r'
         )
 
-        if pixel_width is not None:
-            ax.xaxis.set_major_locator(plt.MultipleLocator(1.0 / pixel_width))  # cm
-            ax.xaxis.set_minor_locator(
-                plt.MultipleLocator(1.0 / pixel_width / 10)
-            )  # cm
-            ax.xaxis.set_major_formatter(tick.FuncFormatter(x_fmt))
-        if pixel_height is not None:
-            ax.yaxis.set_major_locator(plt.MultipleLocator(1.0 / pixel_height))  # cm
-            ax.yaxis.set_minor_locator(
-                plt.MultipleLocator(1.0 / pixel_height / 10)
-            )  # cm
-            ax.yaxis.set_major_formatter(tick.FuncFormatter(y_fmt))
-
+        ax.xaxis.set_major_locator(plt.MultipleLocator(100))
+        ax.yaxis.set_major_locator(plt.MultipleLocator(100))
         # ax.invert_yaxis()
+        ax.set_aspect("equal")
 
-    plt.gca().set_aspect("equal")
-
+    axs.flat[0].set(ylabel="(pixels)")
     for ax in axs.flat:
-        ax.set(xlabel="Width (cm)", ylabel="Height (cm)")
+        ax.set(xlabel="(pixels)")
 
     # Hide x labels and tick labels for top plots and y ticks for right plots.
     for ax in axs.flat:
         ax.label_outer()
 
-    fig.subplots_adjust(right=0.9)
-    cbar_ax = fig.add_axes([0.85, 0.12, 0.01, 0.80])
-    fig.colorbar(im, cax=cbar_ax)
+    if with_colorbar:
+        fig.subplots_adjust(right=0.9)
+        cbar_ax = fig.add_axes([0.85, 0.12, 0.01, 0.80])
+        fig.colorbar(im, cax=cbar_ax)
 
-    plt.tight_layout()
-    plt.pause(pause)
+    # plt.tight_layout(w_pad=1.0, h_pad=.5)
+    plt.subplots_adjust(
+        left=0.119,
+        bottom=0.038,
+        right=.995,
+        top=.962,
+        wspace=0.06,
+        hspace=0.20)
+    # plt.savefig("plot_projs.pdf")
+    # plt.pause(10.)
 
 
 def plot_nicely(
-    title,
+    ax,
     im,
     vmin,
     vmax,
@@ -118,7 +97,10 @@ def plot_nicely(
     with_lines=True,
     mask=None,
     mask_cmap=None,
+    xlabel=None,
     ylabel="y",
+    spine_color=None,
+    spine_linewidth=2
 ):
     import matplotlib.ticker as tick
 
@@ -128,13 +110,9 @@ def plot_nicely(
         -0.5 - (im.shape[1] // 2),
         (im.shape[1] // 2) - 0.5,
     )
-
-    plt.figure()
-    plt.cla()
-    plt.title(title)
     im = np.flipud(np.swapaxes(im, 0, 1))
     print(im.shape)
-    plt.imshow(
+    ax.imshow(
         im,
         vmin=vmin,
         vmax=vmax,
@@ -143,7 +121,13 @@ def plot_nicely(
         extent=extent,
         interpolation="none",
     )
-    ax = plt.gca()
+    ax.set_aspect("equal")
+    if spine_color is not None:
+        plt.setp(ax.spines.values(), color=spine_color)
+        plt.setp([ax.get_xticklines(),
+                  ax.get_yticklines()], color=spine_color)
+        [i.set_linewidth(spine_linewidth) for i in ax.spines.values()]
+
     ax.set_xlim(xmin=-im.shape[1] // 2, xmax=im.shape[1] // 2)
     ax.set_ylim(ymin=-im.shape[0] // 2, ymax=im.shape[0] // 2)
 
@@ -152,7 +136,8 @@ def plot_nicely(
     ax.yaxis.set_major_locator(plt.MultipleLocator(1.0 / vox_sz[0]))  # cm
     ax.yaxis.set_minor_locator(plt.MultipleLocator(1.0 / vox_sz[0] / 10))  # mm
 
-    ax.set_xlabel("$x$ (cm)")
+    if xlabel is not None:
+        ax.set_xlabel("$x$ (cm)")
     ax.set_ylabel(f"${ylabel}$ (cm)")
 
     def x_fmt(x, y):
@@ -164,21 +149,26 @@ def plot_nicely(
     ax.xaxis.set_major_formatter(tick.FuncFormatter(x_fmt))
     ax.yaxis.set_major_formatter(tick.FuncFormatter(y_fmt))
 
-    plt.imshow(
-        mask,
-        alpha=1,
-        cmap=mask_cmap,
-        origin="lower",
-        extent=extent,
-        interpolation="none",
-    )
+    if mask is not None:
+        ax.imshow(
+            mask,
+            alpha=1,
+            cmap=mask_cmap,
+            origin="lower",
+            extent=extent,
+            interpolation="none",
+        )
 
     if with_lines:
         for i, (g, ls) in enumerate(zip(geoms, ("--", "--", "--"))):
             # if i == 1:
             if True:
-                S = g.tube_position[:2]
-                D = g.detector_position[:2]
+                try:
+                    S = g.tube_position[:2]
+                    D = g.detector_position[:2]
+                except:
+                    S = g[:2]
+                    D = g[3:5]
 
                 ax.axline(
                     S / vox_sz[:2],
@@ -219,6 +209,3 @@ def plot_nicely(
                     ls=ls,
                     label=f"p2",
                 )
-
-        # plt.legend()
-    plt.tight_layout()
