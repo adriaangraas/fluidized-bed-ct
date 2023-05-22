@@ -1,130 +1,211 @@
-import h5py
-import odl
+from fbrct.plotting import plt
 import numpy as np
 
-from examples.settings import *
 
+def plot_projs(
+    projs: np.ndarray,
+    pixel_width: float = None,
+    pixel_height: float = None,
+    row_start: int = None,
+    row_end: int = None,
+    pause=1.0,
+    figsize=None,
+    with_colorbar=False,
+    vmax=3.5,
+    subplot_row=False
+):
+    assert projs.ndim == 3
 
-def load_dataset(fname):
-    f = h5py.File(fname, 'r')
-    p, pref = f['p_aligned_T'], f['pref_aligned_T']
+    if row_start is None:
+        row_start = 0
+    if row_end is None:
+        row_end = projs.shape[1]
 
-    # We want rows to be quickly accessible (row-major) so they have to be the last dim.
-    assert pref.shape[1] == 1548 and p.shape[2] == 1548
-    assert pref.shape[2] == 1524 and p.shape[3] == 1524
-
-    return p, pref, p.shape
-
-
-def uniform_angle_partition(dim=2, offset=0.0):
-    """
-    Return basically an array of three angles ODL-style :)
-    :return:
-    """
-    if not (-2 * np.pi <= offset <= 2 * np.pi):
-        raise ValueError()
-
-    if dim == 2:
-        apart = odl.uniform_partition(
-            min_pt=0+offset, max_pt=2 * np.pi - (2 * np.pi / 3) + offset,
-            shape=3,
-            nodes_on_bdry=True)
+    if subplot_row:
+        subplt_shape = (
+            (1, len(projs),) if projs.shape[1] > projs.shape[2]
+            else (len(projs), 1)
+        )
     else:
-        raise ValueError()
+        subplt_shape = (
+            (len(projs),) if projs.shape[2] > projs.shape[1] else (len(projs), 1)
+        )
 
-    return apart
+    fig, axs = plt.subplots(*subplt_shape, figsize=figsize)
 
+    def x_fmt(x, y):
+        return "{:.0f}".format(x * pixel_width)
 
-def detector_partition_2d():
-    """
-    Return a detector partition
+    def y_fmt(x, y):
+        return "{:.0f}".format(x * pixel_height + row_start * pixel_height)
 
-    :param dim:
-    :param recon_det_size:
-    :param recon_det_shape:
-    :return:
-    """
-    return odl.uniform_partition(
-        -DETECTOR_SIZE[0] / 2,
-        DETECTOR_SIZE[0] / 2,
-        DETECTOR_ROWS)
-
-
-def detector_partition_3d(recon_height_length):
-    """
-    Return a limited-height detector partition that is meant to make
-    a partial reconstruction.
-    """
-    recon_det_size = np.array([
-        DETECTOR_WIDTH,
-        recon_height_length * DETECTOR_PIXEL_HEIGHT,
-    ])
-
-    recon_det_shape = [
-        DETECTOR_ROWS,
-        recon_height_length,
-    ]
-
-    return odl.uniform_partition(
-        min_pt=-recon_det_size / 2,
-        max_pt=recon_det_size / 2,
-        shape=recon_det_shape)
+    for i, (ax, p) in enumerate(zip(axs, projs)):
+        # ax.set_title(f"Camera {i+1}",
+        #                      rotation='vertical',
+        #                      x=-.15, y=.25)
+        if subplot_row:
+            ax.set_title(f"Detector {i+1}")
+        else:
+            ax.set_ylabel(f"Detector {i+1}")
 
 
-def plot_sino_range(p, start, end):
-    import matplotlib.pyplot as plt
+        im = ax.imshow(
+            p[row_start:row_end],
+            vmin=0.0,
+            vmax=vmax,
+            cmap='gray_r'
+        )
 
-    plt.figure()
-    plt.imshow(p[0, 0, start:end, :])
-    plt.colorbar()
-    plt.show()
+        ax.xaxis.set_major_locator(plt.MultipleLocator(100))
+        ax.yaxis.set_major_locator(plt.MultipleLocator(100))
+        # ax.invert_yaxis()
+        ax.set_aspect("equal")
+
+    axs.flat[0].set(ylabel="(pixels)")
+    for ax in axs.flat:
+        ax.set(xlabel="(pixels)")
+
+    # Hide x labels and tick labels for top plots and y ticks for right plots.
+    for ax in axs.flat:
+        ax.label_outer()
+
+    if with_colorbar:
+        fig.subplots_adjust(right=0.9)
+        cbar_ax = fig.add_axes([0.85, 0.12, 0.01, 0.80])
+        fig.colorbar(im, cax=cbar_ax)
+
+    # plt.tight_layout(w_pad=1.0, h_pad=.5)
+    plt.subplots_adjust(
+        left=0.119,
+        bottom=0.038,
+        right=.995,
+        top=.962,
+        wspace=0.06,
+        hspace=0.20)
+    # plt.savefig("plot_projs.pdf")
+    # plt.pause(10.)
 
 
-def plot_sino(sino, pause=None):
-    import matplotlib.pyplot as plt
+def plot_nicely(
+    ax,
+    im,
+    vmin,
+    vmax,
+    vox_sz,
+    cmap,
+    geoms=None,
+    with_lines=True,
+    mask=None,
+    mask_cmap=None,
+    xlabel=None,
+    ylabel="y",
+    spine_color=None,
+    spine_linewidth=2
+):
+    import matplotlib.ticker as tick
 
-    if sino.shape[0] == 2:
-        _, (ax1, ax2) = plt.subplots(1, 2, num='1')
-        ax1.imshow(sino[0, ...].T)
-        ax2.imshow(sino[1, ...].T)
-    elif sino.shape[0] == 3:
-        _, (ax1, ax2, ax3) = plt.subplots(1, 3, num='1')
-        ax1.imshow(sino[0, ...].T)
-        ax2.imshow(sino[1, ...].T)
-        ax3.imshow(sino[2, ...].T)
-    else:
-        ValueError("Unexpected shape of sinogram. Received:", sino.shape)
+    extent = (
+        -0.5 - (im.shape[0] // 2),
+        (im.shape[0] // 2) - 0.5,
+        -0.5 - (im.shape[1] // 2),
+        (im.shape[1] // 2) - 0.5,
+    )
+    im = np.flipud(np.swapaxes(im, 0, 1))
+    print(im.shape)
+    ax.imshow(
+        im,
+        vmin=vmin,
+        vmax=vmax,
+        cmap=cmap,
+        origin="lower",
+        extent=extent,
+        interpolation="none",
+    )
+    ax.set_aspect("equal")
+    if spine_color is not None:
+        plt.setp(ax.spines.values(), color=spine_color)
+        plt.setp([ax.get_xticklines(),
+                  ax.get_yticklines()], color=spine_color)
+        [i.set_linewidth(spine_linewidth) for i in ax.spines.values()]
 
-    if pause is None:
-        plt.show()
-    else:
-        plt.pause(pause)
+    ax.set_xlim(xmin=-im.shape[1] // 2, xmax=im.shape[1] // 2)
+    ax.set_ylim(ymin=-im.shape[0] // 2, ymax=im.shape[0] // 2)
 
+    ax.xaxis.set_major_locator(plt.MultipleLocator(1.0 / vox_sz[1]))  # cm
+    ax.xaxis.set_minor_locator(plt.MultipleLocator(1.0 / vox_sz[1] / 10))  # mm
+    ax.yaxis.set_major_locator(plt.MultipleLocator(1.0 / vox_sz[0]))  # cm
+    ax.yaxis.set_minor_locator(plt.MultipleLocator(1.0 / vox_sz[0] / 10))  # mm
 
-def plot_3d(y, vmin=0., vmax=None, pause=None):
-    import matplotlib.pyplot as plt
+    if xlabel is not None:
+        ax.set_xlabel("$x$ (cm)")
+    ax.set_ylabel(f"${ylabel}$ (cm)")
 
-    n, n, m = y.shape
+    def x_fmt(x, y):
+        return "{:.1f}".format(x * vox_sz[1])  # millis
 
-    _, (ax1, ax2, ax3) = plt.subplots(1, 3, num=2)
-    ax1.set_title("$\hat{e}_3$ plane")
-    ax1.imshow(y[:, :, int(m / 2)].T, vmin=vmin, vmax=vmax)
-    ax2.set_title("$\hat{e}_2$ plane")
-    ax2.imshow(y[:, int(n / 2), :].T, vmin=vmin, vmax=vmax)
-    ax3.set_title("$\hat{e}_1$ plane")
-    ax3.imshow(y[int(n / 2), :, :].T, vmin=vmin, vmax=vmax)
-    if pause is None:
-        plt.show()
-    else:
-        plt.pause(pause)
+    def y_fmt(x, y):
+        return "{:.1f}".format(x * vox_sz[0])  # millis
 
-    # from mayavi import mlab
-    # from skimage.measure import marching_cubes_lewiner
-    #
-    # verts, faces, normals, values = marching_cubes_lewiner(y, 0.025)
-    #
-    # mlab.triangular_mesh([vert[0] for vert in verts],
-    #                      [vert[1] for vert in verts],
-    #                      [vert[2] for vert in verts],
-    #                     faces)
-    # mlab.show()
+    ax.xaxis.set_major_formatter(tick.FuncFormatter(x_fmt))
+    ax.yaxis.set_major_formatter(tick.FuncFormatter(y_fmt))
+
+    if mask is not None:
+        ax.imshow(
+            mask,
+            alpha=1,
+            cmap=mask_cmap,
+            origin="lower",
+            extent=extent,
+            interpolation="none",
+        )
+
+    if with_lines:
+        for i, (g, ls) in enumerate(zip(geoms, ("--", "--", "--"))):
+            # if i == 1:
+            if True:
+                try:
+                    S = g.tube_position[:2]
+                    D = g.detector_position[:2]
+                except:
+                    S = g[:2]
+                    D = g[3:5]
+
+                ax.axline(
+                    S / vox_sz[:2],
+                    D / vox_sz[:2],
+                    color="white",
+                    linewidth=1,
+                    ls=ls,
+                    label=f"Source {i}",
+                    # alpha=0.5
+                )
+
+            if False:
+                SD = D - S
+                SC = s_center - S  # source-sphere vector
+
+                # unit vector from sphere to source-det line
+                CZ = np.inner(SD, SC) / np.inner(SD, SD) * SD - SC
+                nCZ = CZ / np.linalg.norm(CZ)
+
+                # outer point on the ball with radius r, being hit by SD
+                P = s_center + s_rad * np.array(vox_sz[:2]) * nCZ
+
+                ax.axline(
+                    S / vox_sz[:2],
+                    P / vox_sz[:2],
+                    color="white",
+                    linewidth=1.0,
+                    ls=ls,
+                    label=f"p1",
+                )
+
+                P = s_center - s_rad * np.array(vox_sz[:2]) * nCZ
+                ax.axline(
+                    S / vox_sz[:2],
+                    P / vox_sz[:2],
+                    color="white",
+                    linewidth=1.0,
+                    ls=ls,
+                    label=f"p2",
+                )
