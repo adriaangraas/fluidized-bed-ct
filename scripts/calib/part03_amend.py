@@ -1,11 +1,8 @@
-import copy
-
-from cate.xray import StaticGeometry, XrayOptimizationProblem, \
-    crop_detector, shift, transform
-from cate import annotate, astra
+import cate.astra as cate_astra
+from cate.util import geoms_from_interpolation
 from scripts.calib.util import *
-from settings import *
-from util import run_initial_marker_optimization
+from scripts.settings import *
+from util import marker_optimization
 
 run_annotation = True
 run_optimalization = True
@@ -30,8 +27,8 @@ class MetalPieces(annotate.EntityLocations):
 def load_previous_geometry(fname):
     multicam_geom = np.load(fname, allow_pickle=True)[0]
     geoms_all_cams = []
-    detector = xray.Detector(DETECTOR_ROWS, DETECTOR_COLS,
-                             DETECTOR_PIXEL_WIDTH, DETECTOR_PIXEL_HEIGHT)
+    detector = cate_astra.Detector(DETECTOR_ROWS, DETECTOR_COLS,
+                                   DETECTOR_PIXEL_WIDTH, DETECTOR_PIXEL_HEIGHT)
 
     for cam in self.cameras:
         geoms = []
@@ -81,8 +78,8 @@ def amended_geometry(
     return amended
 
 
-detector = xray.Detector(DETECTOR_ROWS, DETECTOR_COLS,
-                         DETECTOR_PIXEL_WIDTH, DETECTOR_PIXEL_HEIGHT)
+detector = cate_astra.Detector(DETECTOR_ROWS, DETECTOR_COLS,
+                               DETECTOR_PIXEL_WIDTH, DETECTOR_PIXEL_HEIGHT)
 
 data_dir = "/home/adriaan/data/evert/2021-08-24"
 main_dir = "pre_proc_3x10mm_foamballs_vertical_wall"
@@ -111,11 +108,12 @@ data = annotated_data(projs_path,
                       cameras=cameras,
                       open_annotator=run_annotation,
                       vmin=8., vmax=9.)
-astra.pixels2coords(data, detector)
+cate_astra.pixels2coords(data, detector)
 
 # first load the previous geom that we want to amend
-prev_geom = np.load('geom_pre_proc_Calibration_needle_phantom_30degsec_table474mm_calibrated_on_26aug2021.npy',
-                    allow_pickle=True)[0]  # type: dict
+prev_geom = np.load(
+    'geom_pre_proc_Calibration_needle_phantom_30degsec_table474mm_calibrated_on_26aug2021.npy',
+    allow_pickle=True)[0]  # type: dict
 
 # then "amend' the geometry, that is:
 # - for each cam add a new shared shift and shared rotation parameter
@@ -135,7 +133,7 @@ if run_optimalization:  # optimize, or use existing optimization?
         amended_geom_flat.extend(geoms_per_cam)
 
     data_flat = [d for c in data.values() for d in c]
-    markers = run_initial_marker_optimization(
+    markers = marker_optimization(
         amended_geom_flat,
         data_flat,
         nr_iters=2, plot=False, max_nfev=10)
@@ -150,25 +148,24 @@ else:
     # calibration = np.load(f'calibration_{postfix}.npy', allow_pickle=True)
     amended_geom = np.load(f'geom_{postfix}.npy', allow_pickle=True)
 
+
 # for d1, d2 in zip(multicam_data[3],
 #                   xray.xray_multigeom_project(multicam_geom, markers)):
 #     xray.plot_projected_markers(d1, d2, det=detector, det_padding=1.2)
 
+
 def reconstruction(detector):
-    return Reconstruction(projs_path,
-                          detector.todict(),
-                          expected_voxel_size_x=APPROX_VOXEL_WIDTH,
-                          expected_voxel_size_z=APPROX_VOXEL_HEIGHT)
+    return Reconstruction(projs_path, detector.todict())
 
 
-detector_cropped = crop_detector(detector, ignore_cols)
+detector_cropped = cate_astra.crop_detector(detector, ignore_cols)
 reco = reconstruction(detector_cropped)
 t_range = range(proj_start, proj_start + nr_projs, 6)
 
 all_geoms = []
 all_projs = []
 for cam_id in range(1, 4):
-    geoms_interp = xray.geoms_from_interpolation(
+    geoms_interp = geoms_from_interpolation(
         interpolation_geoms=amended_geom[cam_id - 1],
         interpolation_nrs=t_range,
         interpolation_calibration_nrs=t_annotated,
@@ -176,7 +173,7 @@ for cam_id in range(1, 4):
     all_geoms.extend(geoms_interp)
 
     projs = reco.load_sinogram(t_range=t_range, cameras=[cam_id])
-    projs = prep_projs(projs, ignore_cols)
+    projs = prep_projs(projs)
     all_projs.append(projs)
 
 all_projs = np.concatenate(all_projs, axis=1)
@@ -184,7 +181,9 @@ vol_id, vol_geom = astra_reco_rotation_singlecamera(
     reco, all_projs, all_geoms, algo='FDK', iters=150)
 x = reco.volume(vol_id)
 import pyqtgraph as pq
+
 pq.image(x)
 import matplotlib.pyplot as plt
+
 plt.figure()
 plt.show()
