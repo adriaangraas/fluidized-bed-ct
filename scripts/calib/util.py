@@ -300,7 +300,7 @@ def plot_projections(res, vmin=None, vmax=None, title=None):
 
 def prep_projs(projs):
     projs = np.squeeze(projs)
-    projs = np.swapaxes(projs, 0, 1)
+    # projs = np.swapaxes(projs, 0, 1)
     return np.ascontiguousarray(projs)
 
 

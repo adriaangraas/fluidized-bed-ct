@@ -78,4 +78,5 @@ rotation_0_geoms = {}
 for key, val in zip(multicam_data.keys(), multicam_geom):
     rotation_0_geoms[key] = val[0]._g.asstatic()
 np.save(f"geom_{POSTFIX}.npy", [rotation_0_geoms])
+np.save(f"multicam_geom_{POSTFIX}.npy", multicam_geom)
 print("Optimalization results saved.")

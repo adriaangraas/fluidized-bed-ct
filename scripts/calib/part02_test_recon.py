@@ -3,6 +3,7 @@ import pyqtgraph as pq
 
 import cate.astra as cate_astra
 from cate.util import geoms_from_interpolation
+from fbrct.reco import AstraReconstruction
 from scripts.calib.util import *
 from scripts.settings import *
 
@@ -31,7 +32,7 @@ else:
     raise Exception()
 
 # postfix of stored claibration
-POSTFIX = f'{MAIN_DIR_CALIB}_calibrated_on_25aug2021'
+POSTFIX = f'{MAIN_DIR_CALIB}_calibrated_on_26aug2021'
 nr_projs = proj_end - proj_start
 
 t_range = range(proj_start, proj_start + nr_projs, 6)  # save GPU memory
@@ -53,7 +54,7 @@ if False:
     for test_cam_id in range(1, 4):
         # first make a reco from only one camera
         detector_cropped = crop_detector(detector)
-        reco = Reconstruction(PROJS_PATH, detector_cropped.todict())
+        reco = AstraReconstruction(PROJS_PATH, detector_cropped.todict())
 
         geoms_interp = xray.geoms_from_interpolation(
             interpolation_geoms=multicam_geom[test_cam_id - 1],
@@ -74,7 +75,7 @@ if False:
         plt.show()
 else:
     detector_cropped = cate_astra.crop_detector(detector, 0)
-    reco = Reconstruction(PROJS_PATH, detector_cropped.todict())
+    reco = AstraReconstruction(PROJS_PATH, detector_cropped.todict())
 
     all_geoms = []
     all_projs = []
@@ -85,15 +86,13 @@ else:
             interpolation_calibration_nrs=t_annotated,
             plot=False)
         all_geoms.extend(geoms_interp)
-        projs = reco.load_sinogram(t_range=t_range, cameras=[cam_id],
-                                   ref_path=ref_path,
-                                   ref_lower_density=True)
+        projs = reco.load_sinogram(t_range=t_range, cameras=[cam_id], ref_lower_density=True)
         projs = prep_projs(projs)
         all_projs.append(projs)
-    all_projs = np.concatenate(all_projs, axis=1)
+    all_projs = np.concatenate(all_projs, axis=0)
 
     vol_id, vol_geom = astra_reco_rotation_singlecamera(
-        reco, all_projs, all_geoms, 'FDK', iters=150)
+        reco, all_projs, all_geoms, 'FDK', [300, 300, 1500], 0.025)
     x = reco.volume(vol_id)
     print(x.shape)
     pq.image(x)

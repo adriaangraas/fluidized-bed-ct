@@ -10,6 +10,7 @@ from fbrct.loader import _apply_darkfields, reference_via_mode, \
 
 def _astra_fdk_algo(volume_geom, projection_geom, volume_id, sinogram_id):
     import astra
+    import astra.experimental
 
     proj_cfg = {
         "type": "cuda3d",
@@ -160,6 +161,8 @@ class Reconstruction:
                     warnings.warn("No empty projs, or density factor provided."
                                   " Densities will be computed, rather than "
                                   " the gas fraction!")
+        else:
+            density_factor = 1.
 
         meas = load(self._path, t_range, **load_kwargs)
         if dark is not None:
@@ -173,7 +176,7 @@ class Reconstruction:
         pass
 
     @abstractmethod
-    def sino_gpu_and_proj_geom(self, sino, geoms):
+    def sino_gpu_and_proj_geom(self, sinogram: Any, vectors: np.ndarray):
         pass
 
     @abstractmethod
