@@ -12,7 +12,7 @@ from fbrct.scan import (
 
 SOURCE_RADIUS = 94.5
 DETECTOR_RADIUS = 27.0
-DETECTOR_COLS = 550  # including ROI
+DETECTOR_COLS = 500  # including ROI
 DETECTOR_ROWS = 1548  # including ROI
 DETECTOR_COLS_SPEC = 1524  # also those outside ROI
 DETECTOR_WIDTH_SPEC = 30.2  # cm, also outside ROI

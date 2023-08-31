@@ -113,7 +113,9 @@ def triple_camera_circular_geometry(
         # per initial geom, make a list of angles
         # rotations per angle, the first rotation is not optimizable
         geoms = [[transform(g, yaw=angles[0])] for g in initial_geoms]
-        # a different but shared rotation param for each angle
+        # a rotation param for each angle of the rotation table.
+        # each detector sees the same rotation, so the angle should be the same
+        # for all initial geometries of the source-detectors
         for i in range(1, len(angles)):
             angle = ScalarParameter(angles[i] - angles[0])
             for cam_angles in geoms:

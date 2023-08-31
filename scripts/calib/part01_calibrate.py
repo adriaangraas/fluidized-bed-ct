@@ -9,10 +9,10 @@ detector = cate_astra.Detector(
 
 
 """ 1. Choose a directory, and find the range of motion in the projections."""
-DATA_DIR = "/export/scratch2/adriaan/evert/data/2021-08-20"
-MAIN_DIR = "pre_proc_Calibration_needle_phantom_30degsec_table474mm"
+DATA_DIR = "/run/media/adriaan/Elements/ownCloud_Sophia_SBI/VROI500_1000/"
+MAIN_DIR = "pre_proc_VROI500_1000_Cal_20degsec"
 PROJS_PATH = f"{DATA_DIR}/{MAIN_DIR}"
-POSTFIX = f"{MAIN_DIR}_calibrated_on_26aug2021"  # set this value
+POSTFIX = f"{MAIN_DIR}_calibrated_on_13june2023"  # set this value
 
 if MAIN_DIR == "pre_proc_Calibration_needle_phantom_30degsec_table474mm":
     # first frame before motion
@@ -33,6 +33,11 @@ elif MAIN_DIR == "pre_proc_Calibration_needle_phantom_30degsec_table534mm":
     x = 50
     t_annotated = [x, int(x + nr_projs / 3), int(x + 2 * nr_projs / 3)]
     ignore_cols = 0  # det width used is 550
+elif MAIN_DIR == "pre_proc_VROI500_1000_Cal_20degsec":
+    proj_start = 497
+    proj_end = 497 + 1371  # this is a guess, I'll optimize rot. angles later
+    t_annotated = [497, 958, 1223]
+    nr_projs = 1371  # this is just a guess, I'll optimize rot. angles later
 else:
     raise Exception()
 for t in t_annotated:
@@ -59,7 +64,8 @@ pre_geoms = triangle_geom(SOURCE_RADIUS, DETECTOR_RADIUS,
 srcs = [g.source for g in pre_geoms]
 dets = [g.detector for g in pre_geoms]
 angles = (np.array(t_annotated) - proj_start) / nr_projs * 2 * np.pi
-multicam_geom = triple_camera_circular_geometry(srcs, dets, angles=angles)
+multicam_geom = triple_camera_circular_geometry(
+    srcs, dets, angles=angles, optimize_rotation=True)
 
 
 """ 4. Perform the optimization """
@@ -69,7 +75,8 @@ markers = marker_optimization(
     multicam_geom_flat,
     multicam_data_flat,
     plot=True,
-    max_nfev=10
+    max_nfev=10,
+    nr_iters=2
 )
 np.save(f"markers_{POSTFIX}.npy", markers)
 
