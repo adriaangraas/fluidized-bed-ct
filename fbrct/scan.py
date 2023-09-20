@@ -105,17 +105,17 @@ def cate_to_astra(path, det, geom_scaling_factor=None, angles=None):
 
 
 def astra_to_astrapy(vectors, det):
-    from astrapy.geom import Geometry, Detector
+    from kernelkit.geom import ProjectionGeometry, Detector
 
     geoms = []
     for vec in vectors:
         u = np.array(vec[6:9])
         v = np.array(vec[9:12])
-        geom = Geometry(
-            tube_pos=vec[0:3],
-            det_pos=vec[3:6],
-            u_unit=u / np.linalg.norm(u),
-            v_unit=v / np.linalg.norm(v),
+        geom = ProjectionGeometry(
+            source_position=vec[0:3],
+            detector_position=vec[3:6],
+            u=u / np.linalg.norm(u),
+            v=v / np.linalg.norm(v),
             detector=Detector(
                 rows=det['rows'],
                 cols=det['cols'],

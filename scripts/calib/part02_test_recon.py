@@ -74,7 +74,7 @@ for cam_id in range(1, 2):
     #     plot=False)
     all_geoms.extend(multicam_geom[cam_id - 1])
     projs = reco.load_sinogram(t_range=t, cameras=[cam_id],
-                               ref_lower_density=True)
+                               ref_full=True)
     projs = prep_projs(projs)
     all_projs.append(projs)
 all_projs = np.concatenate(all_projs, axis=0)

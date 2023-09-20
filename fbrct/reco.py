@@ -4,7 +4,8 @@ from typing import Any
 import numpy as np
 import warnings
 
-from fbrct.loader import _apply_darkfields, reference_via_mode, \
+from fbrct.loader import _apply_darkfields, _scatter_correct, \
+    reference_via_mode, \
     compute_bed_density, load, preprocess
 
 
@@ -92,12 +93,12 @@ class Reconstruction:
         self,
         t_range=None,
         cameras=None,
-        darks_path=None,
         ref_path=None,
-        ref_lower_density=False,
+        ref_full=False,
         ref_rotational=False,
         ref_reduction=None,
         ref_projs=None,
+        darks_path=None,
         darks_ran: range = None,
         empty_path=None,
         empty_rotational=False,
@@ -105,7 +106,9 @@ class Reconstruction:
         empty_projs: range = None,
         detector_rows: range = None,
         density_factor: float = None,
-        col_inner_diameter=None
+        col_inner_diameter=None,
+        scatter_mean_full: float = 0.0,
+        scatter_mean_empty: float = 0.0,
     ):
         """Loads and preprocesses the sinogram."""
 
@@ -131,6 +134,7 @@ class Reconstruction:
             ref = load(ref_path, ref_projs, **load_kwargs)
             if dark is not None:
                 _apply_darkfields(dark, ref)
+            _scatter_correct(ref, scatter_mean_full if ref_full else scatter_mean_empty)
 
             if not ref_rotational:
                 assert ref_reduction is not None
@@ -147,6 +151,7 @@ class Reconstruction:
                     empty = load(empty_path, empty_projs, **load_kwargs)
                     if dark is not None:
                         _apply_darkfields(dark, empty)
+                    _scatter_correct(empty, scatter_mean_empty)
 
                     if not empty_rotational:
                         assert empty_reduction is not None
@@ -164,7 +169,9 @@ class Reconstruction:
         meas = load(self._path, t_range, **load_kwargs)
         if dark is not None:
             _apply_darkfields(dark, meas)
-        meas = preprocess(meas, ref, ref_lower_density=ref_lower_density,
+        _scatter_correct(meas, scatter_mean_full)
+        meas = preprocess(meas, ref,
+                          ref_full=ref_full,
                           scaling_factor=1 / density_factor)
         return np.ascontiguousarray(meas.astype(np.float32))
 

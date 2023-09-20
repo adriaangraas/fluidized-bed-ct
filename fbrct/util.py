@@ -83,7 +83,8 @@ def plot_projs(
         wspace=0.06,
         hspace=0.20)
     # plt.savefig("plot_projs.pdf")
-    # plt.pause(10.)
+    if pause is not None:
+        plt.pause(pause)
 
 
 def plot_nicely(

@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from typing import Tuple
 
+import matplotlib.pyplot as plt
 import numpy as np
 import warnings
 
@@ -62,11 +63,26 @@ def reconstruct(
         else:
             timeframes = scan_projs
 
+        # projs = _sino_dynamic(
+        #     scan, reconstructor, ref,
+        #     timeframes=timeframes, detector_rows=detector_rows,
+        #     ref_reduction=ref_reduction, scatter_mean_full=600.0,
+        #     scatter_mean_empty=500.0,
+        # )
+
         projs = _sino_dynamic(
             scan, reconstructor, ref,
             timeframes=timeframes, detector_rows=detector_rows,
-            ref_reduction=ref_reduction
+            ref_reduction=ref_reduction,
         )
+
+        # import matplotlib.pyplot as plt
+        # fig, axs = plt.subplots(nrows=1, ncols=3)
+        # axs[0].imshow(projs[0, 0, ...])
+        # axs[1].imshow(projs2[0, 0, ...])
+        # axs[2].imshow(projs[0, 0, ...] - projs2[0, 0, ...])
+        # plt.show()
+
         # per-frame reconstruction:
         for t, sino_t in zip(timeframes, projs):
             if plot:
@@ -111,9 +127,10 @@ def reconstruct(
         if plot:
             from fbrct.plotting import plt, CM
             plot_projs(
-                projs[:, detector_rows],
+                projs[:,
+                detector_rows] if detector_rows is not None else projs,
                 figsize=(6 * CM, 7.0 * CM),
-                pause=100)
+                pause=1.)
 
         _inner_reco(
             scan,
@@ -128,6 +145,7 @@ def reconstruct(
             locking=locking,
             overwrite=overwrite,
             save=save,
+            plot=plot,
         )
     else:
         raise ValueError()
@@ -153,7 +171,7 @@ def _sino_dynamic(
                 assert ref.is_rotational, "Scan is dynamic, but reference is static?"
 
         ref_path = ref.projs_dir
-        ref_lower_density = not ref.is_full
+        ref_full = ref.is_full
         ref_projs = [i for i in range(ref.proj_start, ref.proj_end)]
         ref_rotational = ref.is_rotational
         if ref_reduction is None:
@@ -168,7 +186,7 @@ def _sino_dynamic(
                               "that is used in the experiment. This is not "
                               "optimal.")
         ref_path = ref.projs_dir
-        ref_lower_density = not ref.is_full
+        ref_full = ref.is_full
         ref_projs = ref.projs
         if ref_reduction is None:
             ref_reduction = 'mode'
@@ -181,7 +199,7 @@ def _sino_dynamic(
     else:
         ref_projs = []
         ref_path = None
-        ref_lower_density = None
+        ref_full = None
         ref_rotational = False
 
     empty_path = None
@@ -198,6 +216,14 @@ def _sino_dynamic(
                 scan.empty.proj_start, scan.empty.proj_end
             )]
 
+    darks_path = None
+    darks_projs = None
+    if scan.darks is not None:
+        darks_path = scan.darks.projs_dir
+        darks_projs = [p for p in range(
+            scan.darks.proj_start, scan.darks.proj_end
+        )]
+
     sino = reco.load_sinogram(
         t_range=timeframes,
         # t_range=range(t, t + 1),
@@ -209,9 +235,9 @@ def _sino_dynamic(
         empty_path=empty_path,
         empty_rotational=empty_rotational,
         empty_projs=empty_projs,
-        # darks_ran=range(10),
-        # darks_path=scan.darks_dir,
-        ref_lower_density=ref_lower_density,
+        darks_ran=darks_projs,
+        darks_path=darks_path,
+        ref_full=ref_full,
         density_factor=scan.density_factor,
         col_inner_diameter=scan.col_inner_diameter,
         **kwargs,
@@ -245,7 +271,7 @@ def _sino_static(
 
     if isinstance(ref, StaticScan):
         ref_path = ref.projs_dir
-        ref_lower_density = not ref.is_full
+        ref_full = ref.is_full
         ref_projs = [a - scan.proj_start + ref.proj_start for a in angles]
         ref_rotational = ref.is_rotational
 
@@ -257,7 +283,7 @@ def _sino_static(
     else:
         ref_projs = []
         ref_path = None
-        ref_lower_density = None
+        ref_full = None
         ref_rotational = False
 
     empty_path = None
@@ -288,7 +314,7 @@ def _sino_static(
             ref_rotational=ref_rotational,
             darks_path=darks_path,
             darks_ran=darks_ran,
-            ref_lower_density=ref_lower_density,
+            ref_full=ref_full,
             empty_path=empty_path,
             empty_rotational=empty_rotational,
             empty_projs=empty_projs,
@@ -341,13 +367,13 @@ def _inner_reco(
             return os.path.join(
                 recodir,
                 scan.name,
-                f"size_{voxels_x}_algo_{algo}_iters_{iters}",
+                f"size_{voxels[0]}_algo_{algo}_iters_{iters}",
                 save_name,
             )
         else:
             return os.path.join(
                 recodir, scan.name,
-                f"size_{voxels_x}_algo_{algo}_iters_{iters}.{ext}"
+                f"size_{voxels[0]}_algo_{algo}_iters_{iters}.{ext}"
             )
 
     # sino[0, ...] = np.mean(sino, axis=0)  # hacky averaging projs
@@ -442,7 +468,7 @@ def _inner_reco(
         plt.show()
 
 
-if __name__ == "__main__":
+def run():
     parser = argparse.ArgumentParser(
         description="This script allows an organized way of reconstructing"
                     " fluidized beds, given the scans in settings.py.")
@@ -496,7 +522,7 @@ if __name__ == "__main__":
         "--voxel-size",
         type=float,
         help="Isotropic voxel size (cm)",
-        default=0.018,
+        default=0.0183333333,
     )
     parser.add_argument(
         "--time",
@@ -670,3 +696,7 @@ if __name__ == "__main__":
                                           f"to {scan.empty}.")
 
         reconstruct(scan, recodir, ref, **_kwargs)
+
+
+if __name__ == "__main__":
+    run()  # avoid scope issues

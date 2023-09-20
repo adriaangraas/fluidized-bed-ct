@@ -181,7 +181,13 @@ def _apply_darkfields(dark, meas):
     meas[:] -= dark
     np.clip(meas, 0.0, None, out=meas)
     _isfinite(meas)
-    return
+
+
+def _scatter_correct(meas, scatter_mean: float = 0.0):
+    if scatter_mean != 0.0:
+        meas -= scatter_mean
+        np.clip(meas, 0.0, None, out=meas)
+        _isfinite(meas)
 
 
 def compute_bed_density(empty, ref, L: float, nr_bins=1000,
@@ -225,16 +231,16 @@ def preprocess(
     ref=None,
     scaling_factor=1.0,
     dtype=np.float32,
-    ref_lower_density=False,
+    ref_full=True,
 ):
     """A simple implementation of Beer-Lambert with referencing
 
-    :type ref_lower_density: If we reconstruct bubbles, the reference is a full
+    :type ref_full: If we reconstruct bubbles, the reference is a full
     column, and the log computation is inverted.
     """
 
     if ref is not None:
-        if ref_lower_density:
+        if not ref_full:
             # we want to measure lower density, so need to multiply by -1
             # -(log(meas) - log(ref)) = log(ref/meas)
             np.divide(ref, meas, out=meas, where=meas != 0)
