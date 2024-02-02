@@ -11,6 +11,7 @@ def plot_projs(
     pause=1.0,
     figsize=None,
     with_colorbar=False,
+    vmin=0.0,
     vmax=3.5,
     subplot_row=False
 ):
@@ -51,7 +52,7 @@ def plot_projs(
 
         im = ax.imshow(
             p[row_start:row_end],
-            vmin=0.0,
+            vmin=vmin,
             vmax=vmax,
             cmap='gray_r'
         )

@@ -1,14 +1,14 @@
-import argparse
-import os
-from pathlib import Path
-import numpy as np
 import copy
-import pyqtgraph as pq
+import warnings
+from pathlib import Path
 import matplotlib.pyplot as plt
+import numpy as np
+import pyqtgraph as pq
 
 from fbrct import loader, reco, Scan, DynamicScan, StaticScan, FluidizedBedScan
 from fbrct.reco import AstraReconstruction
 from fbrct.util import plot_projs
+from fbrct import column_mask
 
 """1. Configuration of set-up and calibration"""
 DETECTOR_COLS = 500  # including ROI
@@ -25,7 +25,8 @@ DETECTOR = {
     "pixel_width": DETECTOR_PIXEL_WIDTH,
     "pixel_height": DETECTOR_PIXEL_HEIGHT,
 }
-DATA_DIR = Path("/run/media/adriaan/Elements/ownCloud_Sophia_SBI/VROI500_1000")
+DATA_DIR = Path(
+    "/run/media/adriaan/Elements/academic/data/ownCloud_Sophia_SBI/VROI500_1000")
 CALIBRATION_FILE = str(Path(__file__).parent
                        / "calib"
                        / "geom_pre_proc_VROI500_1000_Cal_20degsec_calibrated_on_06june2023.npy")
@@ -64,7 +65,7 @@ empty = StaticScan(
     DETECTOR,
     str(DATA_DIR / "pre_proc_5cm_VROI500_1000_Empty"),
     proj_start=10,  # TODO
-    proj_end=110,  # TODO: set higher to reduce noise levels
+    proj_end=20,  # TODO: set higher to reduce noise levels
     is_full=False,
     is_rotational=False,  # TODO: check, the column should not rotate!
     geometry=CALIBRATION_FILE,
@@ -82,11 +83,13 @@ scan = FluidizedBedScan(
     str(DATA_DIR / "pre_proc_5cm_P18_VROI500_1000_MF4_VO50"),
     liter_per_min=None,  # liter per minute (set None to ignore)
     projs=range(1000, 2000),  # TODO: set this to a valid range
+    projs_offset={1: 0, 2: 1, 3: 1},
     geometry=CALIBRATION_FILE,
     cameras=(1, 2, 3),
     col_inner_diameter=5.0,
 )
-timeframes = [402]  # which images to reconstruct
+timeframes = [1630, 1446]  # which images to reconstruct
+# timeframes = [1658, 1650, 1630, 1446]  # which images to reconstruct
 
 """4. Select a background reference.
 There are basically two options: 
@@ -97,20 +100,17 @@ There are basically two options:
     background density. Computing the mode can also take a long time.
 """
 # option 1:
-ref = full
-ref_reduction = 'median'
-# option 2:
-# ref = copy.deepcopy(scan)
-# ref_reduction = 'mode'
+# ref = full
+# ref_reduction = 'median'
+ref = copy.deepcopy(scan)
+ref_reduction = 'mode'
 
 if isinstance(ref, StaticScan):
     ref_path = ref.projs_dir
-    ref_lower_density = not ref.is_full
     ref_projs = [i for i in range(ref.proj_start, ref.proj_end)]
     ref_rotational = ref.is_rotational
 elif isinstance(ref, FluidizedBedScan):
     ref_path = ref.projs_dir
-    ref_lower_density = not ref.is_full
     ref_projs = ref.projs
     if not ref_reduction in ('mode',):
         warnings.warn("For fluidized bed scans, 'mode' is a good"
@@ -121,17 +121,21 @@ elif isinstance(ref, FluidizedBedScan):
 else:
     ref_projs = []
     ref_path = None
-    ref_lower_density = None
     ref_rotational = False
 
 """5. Preprocess the sinogram."""
-assert np.all([t in loader.projection_numbers(scan.projs_dir) for t in timeframes])
+assert np.all(
+    [t in loader.projection_numbers(scan.projs_dir) for t in timeframes])
 recon = reco.AstraReconstruction(
     scan.projs_dir,
     detector=scan.detector)
+# recon = reco.KernelKitReconstruction(
+#     scan.projs_dir,
+#     detector=scan.detector)
 
 sino = recon.load_sinogram(
     t_range=timeframes,
+    t_offsets=scan.projs_offset,
     ref_rotational=ref_rotational,
     ref_reduction=ref_reduction,
     ref_path=ref_path,
@@ -141,14 +145,16 @@ sino = recon.load_sinogram(
     empty_projs=[p for p in range(empty.proj_start, empty.proj_end)],
     # darks_ran=range(10),
     # darks_path=scan.darks_dir,
-    ref_lower_density=ref_lower_density,
+    ref_full=ref.is_full,
     density_factor=scan.density_factor,
     col_inner_diameter=scan.col_inner_diameter,
+    scatter_mean_full=600,
+    scatter_mean_empty=500,
 )
 
-"""6. Perform a SIRT reconstruction."""
+"""6. Perform a SIRT reconstruction (ASTRA Toolbox)"""
 for sino_t in sino:  # go through timeframes one by one
-    sino_t = np.transpose(sino_t, [0, 2, 1])
+    sino_t = np.fliplr(np.transpose(sino_t, [0, 2, 1]))
     plot_projs(sino_t, subplot_row=True)
     plt.show()
 
@@ -157,7 +163,7 @@ for sino_t in sino:  # go through timeframes one by one
         proj_id,
         proj_geom,
         algo='sirt',
-        voxels=(200, 200, 500),  # (300, 300, 1500) for better resolution
+        voxels=(200, 200, 800),  # (300, 300, 1500) for better resolution
         voxel_size=5.5 / 200,  # 5.5 cm / 200 voxels
         iters=200,
         min_constraint=0.0,
@@ -169,3 +175,77 @@ for sino_t in sino:  # go through timeframes one by one
     pq.image(x.T)
     plt.figure()
     plt.show()
+
+# """6. Perform a SIRT reconstruction (experimental - ASTRA KernelKit)"""
+# import cupy as cp
+# import kernelkit as kk
+
+# for sino_t in sino:  # go through timeframes one by one
+#     sino_t = np.fliplr(np.transpose(sino_t, [0, 2, 1]))
+#     sino_t[:, :100, :] = 0.
+#     sino_t[:, 1400:, :] = 0.
+#
+#     _, proj_geom = recon.sino_gpu_and_proj_geom(sino_t, scan.geometry())
+#
+#     # geom_t0 = kk.ProjectionGeometry(
+#     #     source_position=[-10.0, 0.0, 0.0],
+#     #     detector_position=[20.0, 0.0, 0.0],
+#     #     detector=kk.Detector(rows=150, cols=200, pixel_height=0.02,
+#     #                          pixel_width=0.01),
+#     # )
+#     # angles = np.linspace(0, 2 * np.pi, 3, False)
+#     # proj_geom = [kk.rotate(geom_t0, yaw=a) for a in angles]
+#
+#     vol_geom = kk.resolve_volume_geometry(
+#         shape=[300, 300, 200],
+#         voxel_size=0.0259,
+#         extent_min=[None, None, 0.0259*-100],
+#         extent_max=[None, None, 0.0259*(200 -100)],
+#         projection_geometry=proj_geom,
+#         verbose=True)
+#
+#     vol_geom = kk.resolve_volume_geometry(
+#         shape=[300, 300, 200],
+#         voxel_size=0.0259,
+#         extent_min=[None, None, 0.0259*-100],
+#         extent_max=[None, None, 0.0259*(200 -100)],
+#         projection_geometry=proj_geom,
+#         verbose=True)
+#
+#
+#     # target_is_mean = cp.ones((100, 100, 300), dtype=cp.float32)
+#     # target_is_mean[25:75, 25:75, 25:75] = cp.random.random([50] * 3)
+#     # projs = kk.fp(target_is_mean, proj_geom, vol_geom)
+#
+#     plt.figure(1, dpi=150)
+#     plt.imshow(sino_t[0], vmin=0., vmax=0.45)
+#     # plt.figure(2, dpi=150)
+#     # plt.imshow(sino_t[1], vmin=0., vmax=0.45)
+#     # plt.figure(3, dpi=150)
+#     # plt.imshow(sino_t[2], vmin=0., vmax=0.45)
+#     plt.show()
+#
+#     def callbackf(i, x, y_tmp):
+#         for fig in (1, 2, 3,):
+#             plt.figure(fig)
+#             plt.clf()
+#             plt.imshow(y_tmp[fig -1].get(), vmin=0.0, vmax=0.05)
+#             plt.colorbar()
+#             plt.pause(0.011)
+#
+#
+#     col_mask = column_mask(vol_geom.shape)
+#     vol_gpu = kk.sirt(
+#         projections=[cp.copy(p) for p in sino_t],
+#         projection_geometry=proj_geom,
+#         volume_geometry=vol_geom,
+#         iters=200,
+#         # mask=col_mask,
+#         min_constraint=0.0,
+#         # max_constraint=1.0,
+#         callback=callbackf,
+#     )
+#
+#     pq.image(vol_gpu.T)
+#     plt.figure()
+#     plt.show()

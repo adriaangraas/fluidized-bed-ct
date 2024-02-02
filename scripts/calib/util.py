@@ -145,8 +145,8 @@ def annotated_data(
 ) -> list:
     """(Re)store marker projection coordinates from annotations
 
-    :return list
-        List of `dict`, each dict being a projection angle, and each item
+    :return dict
+        Dictionary of `dict`, each dict being a projection angle, and each item
         from the dictionary is a key-value pair of identifier and pixel
         location."""
 

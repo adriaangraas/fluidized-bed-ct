@@ -7,7 +7,7 @@ from typing import Sequence
 from joblib import Memory
 
 import numpy as np
-# from tifffile import tifffile
+from tifffile import tifffile
 import imageio
 from tqdm import tqdm
 
@@ -52,8 +52,9 @@ def _collect_fnames(
 
 
 def load(
-    path,
+    path: str,
     time_range: range = None,
+    time_offsets = None,
     regex: str = PROJECTION_FILE_REGEX,
     dtype=np.float32,
     verbose: bool = True,
@@ -89,7 +90,8 @@ def load(
     for i, ((cam_id, t), filename) in enumerate(
         zip(results, results_filenames)):
         if cam_id in cameras:
-            nested_dict[cam_id][t] = filename
+            t_actual = t - time_offsets[cam_id] if time_offsets is not None else t
+            nested_dict[cam_id][t_actual] = filename
 
     # check if wanted timesteps are in the dict, and load them
     for t_i, t in enumerate(tqdm(time_range)) if verbose else enumerate(
@@ -100,11 +102,13 @@ def load(
                     f"Could not find timestep {t} from "
                     f"detector {d} in directory {path}."
                 )
+            if verbose:
+                print("Reading ", nested_dict[d][t])
             # faster but imageio may be easier to install
-            # ims[t_i, d_i, rows] = \
-            # tifffile.imread(nested_dict[d][t], maxworkers=1)[
             ims[t_i, d_i, rows] = \
-                imageio.v2.imread(nested_dict[d][t])[detector_rows]
+                tifffile.imread(nested_dict[d][t], maxworkers=1)[
+                # imageio.v2.imread(nested_dict[d][t])[
+                        detector_rows]
 
     return np.ascontiguousarray(ims)
 
