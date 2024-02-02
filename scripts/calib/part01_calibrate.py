@@ -1,5 +1,4 @@
 from cate import astra as cate_astra
-from cate.util import geoms_from_interpolation, plot_projected_markers
 from scripts.calib.util import *
 from scripts.settings import *
 
