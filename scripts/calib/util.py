@@ -113,7 +113,9 @@ def triple_camera_circular_geometry(
         # per initial geom, make a list of angles
         # rotations per angle, the first rotation is not optimizable
         geoms = [[transform(g, yaw=angles[0])] for g in initial_geoms]
-        # a different but shared rotation param for each angle
+        # a rotation param for each angle of the rotation table.
+        # each detector sees the same rotation, so the angle should be the same
+        # for all initial geometries of the source-detectors
         for i in range(1, len(angles)):
             angle = ScalarParameter(angles[i] - angles[0])
             for cam_angles in geoms:
@@ -143,8 +145,8 @@ def annotated_data(
 ) -> list:
     """(Re)store marker projection coordinates from annotations
 
-    :return list
-        List of `dict`, each dict being a projection angle, and each item
+    :return dict
+        Dictionary of `dict`, each dict being a projection angle, and each item
         from the dictionary is a key-value pair of identifier and pixel
         location."""
 
@@ -300,7 +302,7 @@ def plot_projections(res, vmin=None, vmax=None, title=None):
 
 def prep_projs(projs):
     projs = np.squeeze(projs)
-    # projs = np.swapaxes(projs, 0, 1)
+    projs = np.swapaxes(projs, 0, 1)
     return np.ascontiguousarray(projs)
 
 

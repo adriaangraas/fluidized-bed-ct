@@ -1,16 +1,23 @@
+import pathlib
 from abc import abstractmethod
 from typing import Any
 
 import numpy as np
 import warnings
 
-from fbrct.loader import _apply_darkfields, reference_via_mode, \
-    compute_bed_density, load, preprocess
+from joblib import Memory
 
+from fbrct.loader import (
+    _apply_darkfields, _scatter_correct,
+    reference_via_mode, compute_bed_density, load, preprocess)
+
+# we use joblibs `Memory` to cache long results
+path = pathlib.Path(__file__).parent.resolve()
+cachedir = str(path.parent / "cache")
+memory = Memory(cachedir, verbose=0)
 
 def _astra_fdk_algo(volume_geom, projection_geom, volume_id, sinogram_id):
     import astra
-    import astra.experimental
 
     proj_cfg = {
         "type": "cuda3d",
@@ -67,7 +74,7 @@ class Reconstruction:
         self.detector = detector
 
     @staticmethod
-    def _reduce_ref(ref, reduction: str, detector_rows):
+    def _reduce_ref(ref, reduction: str, detector_rows=None):
         """Reduce a (temporal) stack of projections into a single projection,
         with the effect of noise reduction/bubble removal."""
 
@@ -89,16 +96,76 @@ class Reconstruction:
 
         return reduced
 
+    @staticmethod
+    @memory.cache
+    def _compute_or_restore_ref(ref_path,
+                                ref_projs,
+                                ref_full,
+                                ref_rotational,
+                                ref_reduction,
+                                load_kwargs,
+                                dark,
+                                empty_path,
+                                empty_projs,
+                                empty_rotational,
+                                empty_reduction,
+                                detector_rows,
+                                density_factor,
+                                col_inner_diameter,
+                                scatter_mean_full,
+                                scatter_mean_empty):
+        """This function avoids loading the entire stack of files when
+        the reference is already computed and stored."""
+
+        ref = load(ref_path, ref_projs, **load_kwargs)
+        if dark is not None:
+            _apply_darkfields(dark, ref)
+        _scatter_correct(ref,
+                         scatter_mean_full if ref_full else scatter_mean_empty)
+
+        if not ref_rotational:
+            assert ref_reduction is not None
+            ref = Reconstruction._reduce_ref(ref, ref_reduction, detector_rows)
+        # else:
+        #     assert len(ref) == len(t_range)
+
+        if density_factor is None:
+            density_factor = 1.0
+            if empty_path is not None:
+                assert col_inner_diameter is not None, (
+                    "Column diameter needs to be known to compute empty"
+                    " density factor.")
+                empty = load(empty_path, empty_projs, **load_kwargs)
+                if dark is not None:
+                    _apply_darkfields(dark, empty)
+                _scatter_correct(empty, scatter_mean_empty)
+
+                if not empty_rotational:
+                    assert empty_reduction is not None
+                    empty = Reconstruction._reduce_ref(empty, empty_reduction,
+                                                       detector_rows)
+                else:
+                    assert len(empty) == len(ref)
+                density_factor = compute_bed_density(
+                    empty, ref, L=col_inner_diameter)
+            else:
+                warnings.warn("No empty projs, or density factor provided."
+                              " Densities will be computed, rather than "
+                              " the gas fraction!")
+
+        return density_factor, ref
+
     def load_sinogram(
         self,
         t_range=None,
+        t_offsets=None,
         cameras=None,
-        darks_path=None,
         ref_path=None,
-        ref_lower_density=False,
+        ref_full=False,
         ref_rotational=False,
         ref_reduction=None,
         ref_projs=None,
+        darks_path=None,
         darks_ran: range = None,
         empty_path=None,
         empty_rotational=False,
@@ -106,7 +173,9 @@ class Reconstruction:
         empty_projs: range = None,
         detector_rows: range = None,
         density_factor: float = None,
-        col_inner_diameter=None
+        col_inner_diameter=None,
+        scatter_mean_full: float = 0.0,
+        scatter_mean_empty: float = 0.0,
     ):
         """Loads and preprocesses the sinogram."""
 
@@ -129,45 +198,34 @@ class Reconstruction:
                 ref_projs = None  # use all projs for referencing (static)
                 if ref_rotational:
                     ref_projs = t_range  # reference one-on-one
-            ref = load(ref_path, ref_projs, **load_kwargs)
-            if dark is not None:
-                _apply_darkfields(dark, ref)
 
-            if not ref_rotational:
-                assert ref_reduction is not None
-                ref = self._reduce_ref(ref, ref_reduction, detector_rows)
-            else:
-                assert len(ref) == len(t_range)
+            density_factor, ref = self._compute_or_restore_ref(
+                ref_path,
+                ref_projs,
+                ref_full,
+                ref_rotational,
+                ref_reduction,
+                load_kwargs,
+                dark,
+                empty_path,
+                empty_projs,
+                empty_rotational,
+                empty_reduction,
+                detector_rows,
+                density_factor,
+                col_inner_diameter,
+                scatter_mean_full,
+                scatter_mean_empty)
 
-            if density_factor is None:
-                density_factor = 1.0
-                if empty_path is not None:
-                    assert col_inner_diameter is not None, (
-                        "Column diameter needs to be known to compute empty"
-                        " density factor.")
-                    empty = load(empty_path, empty_projs, **load_kwargs)
-                    if dark is not None:
-                        _apply_darkfields(dark, empty)
+        if density_factor is None:
+            density_factor = 1.0
 
-                    if not empty_rotational:
-                        assert empty_reduction is not None
-                        empty = self._reduce_ref(empty, empty_reduction,
-                                                 detector_rows)
-                    else:
-                        assert len(empty) == len(ref)
-                    density_factor = compute_bed_density(
-                        empty, ref, L=col_inner_diameter)
-                else:
-                    warnings.warn("No empty projs, or density factor provided."
-                                  " Densities will be computed, rather than "
-                                  " the gas fraction!")
-        else:
-            density_factor = 1.
-
-        meas = load(self._path, t_range, **load_kwargs)
+        meas = load(self._path, t_range, t_offsets, **load_kwargs)
         if dark is not None:
             _apply_darkfields(dark, meas)
-        meas = preprocess(meas, ref, ref_lower_density=ref_lower_density,
+        _scatter_correct(meas, scatter_mean_full)
+        meas = preprocess(meas, ref,
+                          ref_full=ref_full,
                           scaling_factor=1 / density_factor)
         return np.ascontiguousarray(meas.astype(np.float32))
 
@@ -176,7 +234,7 @@ class Reconstruction:
         pass
 
     @abstractmethod
-    def sino_gpu_and_proj_geom(self, sinogram: Any, vectors: np.ndarray):
+    def sino_gpu_and_proj_geom(self, sino, geoms):
         pass
 
     @abstractmethod
@@ -218,7 +276,7 @@ class AstraReconstruction(Reconstruction):
         w, h = voxels[0] * voxel_size / 2, voxels_z * voxel_size / 2
         print(
             f"Creating empty GPU volume {voxels_x}:{voxels_x}:{voxels_z} "
-            f"with size {w*2}:{w*2}:{h*2}."
+            f"with size {w * 2}:{w * 2}:{h * 2}."
         )
         vol_geom = astra.create_vol_geom(
             voxels_x, voxels_x, voxels_z, -w, w, -w, w, -h, h
@@ -309,23 +367,23 @@ class AstraReconstruction(Reconstruction):
         astra.clear()
 
 
-class AstrapyReconstruction(Reconstruction):
+class KernelKitReconstruction(Reconstruction):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
     def sino_gpu_and_proj_geom(self, sinogram: Any, vectors: np.ndarray):
-        import astrapy
+        import kernelkit
 
         geoms = []
         for vec in vectors:
             u = np.array(vec[6:9])
             v = np.array(vec[9:12])
-            geom = astrapy.Geometry(
-                tube_pos=vec[0:3],
-                det_pos=vec[3:6],
-                u_unit=u / np.linalg.norm(u),
-                v_unit=v / np.linalg.norm(v),
-                detector=astrapy.Detector(
+            geom = kernelkit.ProjectionGeometry(
+                source_position=vec[0:3],
+                detector_position=vec[3:6],
+                u=u / np.linalg.norm(u),
+                v=v / np.linalg.norm(v),
+                detector=kernelkit.Detector(
                     rows=self.detector["rows"],
                     cols=self.detector["cols"],
                     pixel_width=np.linalg.norm(u),
@@ -340,9 +398,8 @@ class AstrapyReconstruction(Reconstruction):
         self,
         proj,
         geom,
+        vol_geom,
         algo="sirt",
-        voxels: tuple=None,
-        voxel_size: float=None,
         iters=200,
         min_constraint=None,
         max_constraint=None,
@@ -350,9 +407,8 @@ class AstrapyReconstruction(Reconstruction):
         col_mask=False,
         col_mask_percentage=None,
         callback=None,
-        vol_rotation=None,
     ):
-        import astrapy
+        import kernelkit
 
         if col_mask:
             # col_mask = astrapy.bp(proj_mask, geom, vol_shp, vol_min, vol_max)
@@ -365,7 +421,7 @@ class AstrapyReconstruction(Reconstruction):
             from fbrct import column_mask
 
             # radius = int(voxels_x // 2 * col_mask_percentage)
-            col_mask *= column_mask(voxels)
+            col_mask *= column_mask(vol_geom.shape)
 
             if vol_mask is None:
                 vol_mask = col_mask
@@ -374,26 +430,21 @@ class AstrapyReconstruction(Reconstruction):
 
         algo = algo.lower()
         if algo == "sirt":
-            vol_gpu = astrapy.sirt_experimental(
+            vol_gpu = kernelkit.sirt(
                 projections=proj,
-                geometry=geom,
-                mask=vol_mask,
-                volume_shape=voxels,
-                volume_voxel_size=[voxel_size] * 3,
+                projection_geometry=geom,
+                volume_geometry=vol_geom,
                 iters=iters,
+                mask=vol_mask,
                 min_constraint=min_constraint,
                 max_constraint=max_constraint,
-                chunk_size=200,
-                algo="gpu",
                 callback=callback,
             )
         elif algo == "fdk":
-            vol_gpu = astrapy.fdk(
+            vol_gpu = kernelkit.fdk(
                 projections=proj,
-                geometry=geom,
-                volume_shape=voxels,
-                volume_voxel_size=[voxel_size] * 3,
-                return_gpu=False,
+                projection_geometry=geom,
+                volume_geometry=vol_geom,
             )
         else:
             raise ValueError(f"Algorithm {algo} not implemented.")
@@ -407,4 +458,3 @@ class AstrapyReconstruction(Reconstruction):
     @staticmethod
     def sinogram(sinogram):
         return sinogram
-

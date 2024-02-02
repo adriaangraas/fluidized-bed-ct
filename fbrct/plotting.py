@@ -2,7 +2,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 
 CM = 1/2.54
-DPI = 150
+DPI = 100
 FONT = 'Arial'
 FONT_SIZE = 7
 TEXTWIDTH = 18.35  # elsevier 5p

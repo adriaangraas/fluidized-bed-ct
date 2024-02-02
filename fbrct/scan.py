@@ -104,18 +104,18 @@ def cate_to_astra(path, det, geom_scaling_factor=None, angles=None):
         return geoms_all_cams
 
 
-def astra_to_astrapy(vectors, det):
-    from astrapy.geom import Geometry, Detector
+def astra_to_kernelkit(vectors, det):
+    from kernelkit.geom import ProjectionGeometry, Detector
 
     geoms = []
     for vec in vectors:
         u = np.array(vec[6:9])
         v = np.array(vec[9:12])
-        geom = Geometry(
-            tube_pos=vec[0:3],
-            det_pos=vec[3:6],
-            u_unit=u / np.linalg.norm(u),
-            v_unit=v / np.linalg.norm(v),
+        geom = ProjectionGeometry(
+            source_position=vec[0:3],
+            detector_position=vec[3:6],
+            u=u / np.linalg.norm(u),
+            v=v / np.linalg.norm(v),
             detector=Detector(
                 rows=det['rows'],
                 cols=det['cols'],
@@ -159,6 +159,7 @@ class Scan(ABC):
         detector,
         projs_dir,
         projs=None,
+        projs_offset=None,
         geometry=None,
         geometry_scaling_factor=None,
         geometry_rotation_offset=0.0,
@@ -169,6 +170,7 @@ class Scan(ABC):
         darks=None,
         empty=None,
         is_rotational: bool = False,
+        cams_are_rotated: bool = False,
         is_full: bool = False,
         col_inner_diameter: float = None,
         density_factor: float = None
@@ -191,8 +193,10 @@ class Scan(ABC):
         self.is_rotational = is_rotational
         self.is_full = is_full
         self.projs = projs
+        self.projs_offset = projs_offset
         self.col_inner_diameter = col_inner_diameter
         self.density_factor = density_factor
+        self.cams_are_rotated = cams_are_rotated
 
     def add_phantom(self, phantom: Phantom):
         self.phantoms.append(phantom)
@@ -268,7 +272,7 @@ class TraverseScan(DynamicScan):
     def __init__(self, *args, timeframes, motor_velocity, **kwargs):
         self.timeframes = timeframes
         self.expected_velocity = motor_velocity
-        assert 'is_rotational' not in kwargs, ("Traverse Scan is non"
+        assert 'is_rotational' not in kwargs, ("TraverseScan is non"
                                                "rotational by default.")
         kwargs['is_rotational'] = False
         super().__init__(*args, **kwargs)

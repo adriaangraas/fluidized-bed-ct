@@ -12,7 +12,7 @@ from fbrct.scan import (
 
 SOURCE_RADIUS = 94.5
 DETECTOR_RADIUS = 27.0
-DETECTOR_COLS = 550  # including ROI
+DETECTOR_COLS = 500  # including ROI
 DETECTOR_ROWS = 1548  # including ROI
 DETECTOR_COLS_SPEC = 1524  # also those outside ROI
 DETECTOR_WIDTH_SPEC = 30.2  # cm, also outside ROI
@@ -69,6 +69,15 @@ _19_empty_static = StaticScan(
     geometry_scaling_factor=1.0 / 1.0106333,
 )
 
+_19_darks_static = StaticScan(
+    "2021-08-19_pre_proc_Darkfield",
+    detector,
+    f'{data_dir_19}/pre_proc_Dark_frames',
+    proj_start=10,  # never take first frames, they are doomed
+    proj_end=1000,
+    is_full=False,
+)
+
 # Note: many of these scans contain jittered/missing frames, reconstructions may
 # be incoherent
 for lmin in [18, 19, 20, 22, 25]:
@@ -77,7 +86,7 @@ for lmin in [18, 19, 20, 22, 25]:
         detector,
         f"{data_dir_19}/pre_proc_{lmin}Lmin",
         liter_per_min=lmin,
-        # darks_dir=f'{data_dir}/pre_proc_Darkfield',
+        darks=_19_darks_static,
         # geometry=f"{calib_dir}/geom_table474mm_26aug2021_amend_pre_proc_3x10mm_foamballs_vertical_wall_31aug2021.npy",
         geometry=f"{calib_dir}/geom_pre_proc_Calibration_needle_phantom_30degsec_table474mm_calibrated_on_26aug2021.npy",
         geometry_scaling_factor=1.0 / 1.0106333,
@@ -103,7 +112,7 @@ for lmin in [18, 19, 20, 22, 25]:
 #     ref_dir=f'{data_dir_23}/pre_proc_Brightfield',
 #     # darks_dir=f'{data_dir}/pre_proc_Dark_frames',
 #     geometry=f'{calib_dir}/resources/geom_pre_proc_Calibration_needle_phantom_30degsec_table474mm_calibrated_on_26aug2021.npy',
-#     ref_lower_density=True
+#     ref_full=True
 # )
 # # SCANS.append(scan)
 #
@@ -115,7 +124,7 @@ for lmin in [18, 19, 20, 22, 25]:
 #     ref_dir='/home/adriaan/ownCloud3/pre_proc_Brightfield',
 #     darks_dir='/home/adriaan/ownCloud3/pre_proc_Dark_frames',
 #     geometry='resources/multicam_rot0_pre_proc_Calibration_needle_phantom_30degsec_table474mm_calibrated_on_26aug2021.npy',
-#     ref_lower_density=True
+#     ref_full=True
 # )
 # # SCANS.append(scan)
 #
@@ -127,7 +136,7 @@ for lmin in [18, 19, 20, 22, 25]:
 #     ref_dir='/home/adriaan/ownCloud3/pre_proc_Brightfield',
 #     darks_dir='/home/adriaan/ownCloud3/pre_proc_Dark_frames',
 #     geometry='resources/multicam_rot0_pre_proc_Calibration_needle_phantom_30degsec_table474mm_calibrated_on_26aug2021.npy',
-#     ref_lower_density=True
+#     ref_full=True
 # )
 # # SCANS.append(scan)
 #
@@ -319,7 +328,7 @@ _scan = StaticScan(
     geometry_scaling_factor=1.0 / 1.0106333,
     references=[_24_full_rotating],
     empty=_24_empty_rotating,
-    darks=_24_darks,
+    # darks=_24_darks,
     col_inner_diameter=5.0,
 )
 SCANS.append(_scan)

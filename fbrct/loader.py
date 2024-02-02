@@ -7,7 +7,7 @@ from typing import Sequence
 from joblib import Memory
 
 import numpy as np
-# from tifffile import tifffile
+from tifffile import tifffile
 import imageio
 from tqdm import tqdm
 
@@ -52,8 +52,9 @@ def _collect_fnames(
 
 
 def load(
-    path,
+    path: str,
     time_range: range = None,
+    time_offsets = None,
     regex: str = PROJECTION_FILE_REGEX,
     dtype=np.float32,
     verbose: bool = True,
@@ -89,7 +90,8 @@ def load(
     for i, ((cam_id, t), filename) in enumerate(
         zip(results, results_filenames)):
         if cam_id in cameras:
-            nested_dict[cam_id][t] = filename
+            t_actual = t - time_offsets[cam_id] if time_offsets is not None else t
+            nested_dict[cam_id][t_actual] = filename
 
     # check if wanted timesteps are in the dict, and load them
     for t_i, t in enumerate(tqdm(time_range)) if verbose else enumerate(
@@ -100,11 +102,13 @@ def load(
                     f"Could not find timestep {t} from "
                     f"detector {d} in directory {path}."
                 )
+            if verbose:
+                print("Reading ", nested_dict[d][t])
             # faster but imageio may be easier to install
-            # ims[t_i, d_i, rows] = \
-            # tifffile.imread(nested_dict[d][t], maxworkers=1)[
             ims[t_i, d_i, rows] = \
-                imageio.v2.imread(nested_dict[d][t])[detector_rows]
+                tifffile.imread(nested_dict[d][t], maxworkers=1)[
+                # imageio.v2.imread(nested_dict[d][t])[
+                        detector_rows]
 
     return np.ascontiguousarray(ims)
 
@@ -181,7 +185,13 @@ def _apply_darkfields(dark, meas):
     meas[:] -= dark
     np.clip(meas, 0.0, None, out=meas)
     _isfinite(meas)
-    return
+
+
+def _scatter_correct(meas, scatter_mean: float = 0.0):
+    if scatter_mean != 0.0:
+        meas -= scatter_mean
+        np.clip(meas, 0.0, None, out=meas)
+        _isfinite(meas)
 
 
 def compute_bed_density(empty, ref, L: float, nr_bins=1000,
@@ -225,16 +235,16 @@ def preprocess(
     ref=None,
     scaling_factor=1.0,
     dtype=np.float32,
-    ref_lower_density=False,
+    ref_full=True,
 ):
     """A simple implementation of Beer-Lambert with referencing
 
-    :type ref_lower_density: If we reconstruct bubbles, the reference is a full
+    :type ref_full: If we reconstruct bubbles, the reference is a full
     column, and the log computation is inverted.
     """
 
     if ref is not None:
-        if ref_lower_density:
+        if not ref_full:
             # we want to measure lower density, so need to multiply by -1
             # -(log(meas) - log(ref)) = log(ref/meas)
             np.divide(ref, meas, out=meas, where=meas != 0)

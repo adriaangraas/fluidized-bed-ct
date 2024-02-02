@@ -30,7 +30,8 @@ PYTHONPATH=path/to/fbrct python some_script.py
 
 ## 2. Run a calibration
 
-First make sure the _CaTE_ scripts are available to Python.
+First install the _CaTE_ scripts are available to Python.
+
 ```shell
 git clone https://github.com/adriaangraas/cate
 ```
@@ -66,7 +67,7 @@ be modified to your needs.
    files need to be copied and used for later reconstructions. The found
    marker positions are also stored, but only for later convenience.
 
-The (optional) script _part02_test_recon.py_ is to help figure 
+The (optional) script _part02_test_recon.py_ is to help figure out 
 out how accurate the reconstruction is. The projections from the marker scan be used to reconstruct
 the marker object. There is a superfluous amount of data, since 3 detectors
 are used for a rotational scan. To reconstruct the object, the geometry 
