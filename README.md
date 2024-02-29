@@ -12,8 +12,9 @@ For an installation with _conda_ (or _mamba_, preferred), run:
 ```shell
 conda create -n fluidized_bed_ct python=3.10
 conda activate fluidized_bed_ct
-conda install numpy scipy imageio matplotlib joblib tqdm -c conda-forge
+conda install numpy scipy imageio matplotlib joblib tqdm pyqtgraph -c conda-forge
 conda install astra-toolbox -c astra-toolbox/label/dev
+pip install transforms3d
 ```
 
 Then download this package:
