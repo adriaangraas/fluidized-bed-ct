@@ -28,8 +28,6 @@ environment variable, e.g.:
 conda activate fluidized_bed_ct
 PYTHONPATH=path/to/fbrct python some_script.py
 ```
-### Adapting for Windows
-If you're running the scripts from windows, in `fbrct/loader.py`, the `PROJECTION_FILE_REGEX` needs to be adapted to `"camera ([1-3])\\\img_([0-9]{1,6})\.tif$"` to deal with backslash folder separation in Windows
 
 ## 2. Run a calibration
 
